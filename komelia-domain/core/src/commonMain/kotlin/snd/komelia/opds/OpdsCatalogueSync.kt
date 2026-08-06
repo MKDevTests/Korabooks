@@ -19,8 +19,11 @@ private val logger = KotlinLogging.logger { }
  *
  * Big enough that the transaction stops being the cost, small enough that
  * stopping a sync loses a second of work rather than a minute of it.
+ *
+ * Raised from a hundred once the batch started sharing its statements: the
+ * per-book cost is now low enough that the commit itself is what shows.
  */
-private const val BATCH = 100
+private const val BATCH = 250
 
 /**
  * Shelves the network may run ahead of the disk.

@@ -6,6 +6,7 @@ import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.core.inList
 import org.jetbrains.exposed.v1.jdbc.Database
 import org.jetbrains.exposed.v1.jdbc.batchInsert
+import org.jetbrains.exposed.v1.jdbc.batchUpsert
 import org.jetbrains.exposed.v1.jdbc.deleteWhere
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.upsert
@@ -28,6 +29,74 @@ class ExposedOfflineBookMetadataRepository(database: Database) : OfflineBookMeta
     private val metadataAuthorsTable = OfflineBookMetadataAuthorTable
     private val metadataTagTable = OfflineBookMetadataTagTable
     private val metadataLinkTable = OfflineBookMetadataLinkTable
+
+    /**
+     * A hundred books in seven statements instead of seven hundred.
+     *
+     * The child tables are cleared with one `in (…)` per table and refilled
+     * with one batch insert per table, rather than a delete and an insert per
+     * book. Sliced because SQLite counts the identifiers in an `in (…)` and a
+     * catalogue sync would walk past its limit.
+     */
+    override suspend fun saveAll(metadata: List<OfflineBookMetadata>) {
+        if (metadata.isEmpty()) return
+        transaction {
+            for (slice in metadata.chunked(IDS_PER_QUERY)) {
+                val ids = slice.map { it.bookId.value }
+
+                metadataTable.batchUpsert(slice) { book ->
+                    this[metadataTable.bookId] = book.bookId.value
+                    this[metadataTable.number] = book.number
+                    this[metadataTable.numberLock] = book.numberLock
+                    this[metadataTable.numberSort] = book.numberSort
+                    this[metadataTable.numberSortLock] = book.numberSortLock
+                    this[metadataTable.releaseDate] = book.releaseDate?.toString()
+                    this[metadataTable.releaseDateLock] = book.releaseDateLock
+                    this[metadataTable.summary] = book.summary
+                    this[metadataTable.summaryLock] = book.summaryLock
+                    this[metadataTable.title] = book.title
+                    this[metadataTable.titleLock] = book.titleLock
+                    this[metadataTable.authorsLock] = book.authorsLock
+                    this[metadataTable.tagsLock] = book.tagsLock
+                    this[metadataTable.isbn] = book.isbn
+                    this[metadataTable.isbnLock] = book.isbnLock
+                    this[metadataTable.linksLock] = book.linksLock
+                    this[metadataTable.createdDate] = book.created.epochSeconds
+                    this[metadataTable.lastModifiedDate] = book.lastModified.epochSeconds
+                }
+
+                metadataAuthorsTable.deleteWhere { metadataAuthorsTable.bookId inList ids }
+                metadataTagTable.deleteWhere { metadataTagTable.bookId inList ids }
+                metadataLinkTable.deleteWhere { metadataLinkTable.bookId inList ids }
+
+                val authors = slice.flatMap { book -> book.authors.map { book.bookId.value to it } }
+                if (authors.isNotEmpty()) {
+                    metadataAuthorsTable.batchInsert(authors) { (bookId, author) ->
+                        this[metadataAuthorsTable.bookId] = bookId
+                        this[metadataAuthorsTable.name] = author.name
+                        this[metadataAuthorsTable.role] = author.role
+                    }
+                }
+
+                val tags = slice.flatMap { book -> book.tags.map { book.bookId.value to it } }
+                if (tags.isNotEmpty()) {
+                    metadataTagTable.batchInsert(tags) { (bookId, tag) ->
+                        this[metadataTagTable.bookId] = bookId
+                        this[metadataTagTable.tag] = tag
+                    }
+                }
+
+                val links = slice.flatMap { book -> book.links.map { book.bookId.value to it } }
+                if (links.isNotEmpty()) {
+                    metadataLinkTable.batchInsert(links) { (bookId, link) ->
+                        this[metadataLinkTable.bookId] = bookId
+                        this[metadataLinkTable.label] = link.label
+                        this[metadataLinkTable.url] = link.url
+                    }
+                }
+            }
+        }
+    }
 
     override suspend fun save(metadata: OfflineBookMetadata) {
         transaction {
@@ -196,5 +265,10 @@ class ExposedOfflineBookMetadataRepository(database: Database) : OfflineBookMeta
             lastModified = Instant.fromEpochSeconds(this[OfflineBookMetadataTable.lastModifiedDate])
         )
 
+    }
+
+    private companion object {
+        /** Comfortably under SQLite's bound-parameter limit. */
+        const val IDS_PER_QUERY = 250
     }
 }

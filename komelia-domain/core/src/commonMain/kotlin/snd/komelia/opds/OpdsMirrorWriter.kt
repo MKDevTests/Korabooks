@@ -107,6 +107,13 @@ class OpdsMirrorWriter(private val repositories: OfflineRepositories) {
         if (batch.isEmpty()) return
         repositories.transactionTemplate.execute {
             for (mapped in batch) writeShelf(mapped, covers)
+            // Book metadata is the heaviest row a book has — a title and a
+            // number, plus authors, tags and links in three tables of their
+            // own. Written per book that is seven statements each; hoisted out
+            // of the loop the whole batch costs seven.
+            repositories.bookMetadataRepository.saveAll(
+                batch.flatMap { it.books }.map { it.metadata.toOfflineBookMetadata(it.id) }
+            )
         }
     }
 
@@ -136,16 +143,25 @@ class OpdsMirrorWriter(private val repositories: OfflineRepositories) {
             .associateBy { it.id }
 
         repositories.transactionTemplate.execute {
+            val unseen = mutableListOf<KomeliaBook>()
             for (mapped in batch) {
                 writeSeries(mapped)
                 for (book in mapped.books) {
                     val current = existing[book.id]
-                    if (current == null) writeBook(book, null)
-                    else if (current.seriesId != mapped.series.id) {
+                    if (current == null) {
+                        writeBook(book, null)
+                        unseen += book
+                    } else if (current.seriesId != mapped.series.id) {
                         repositories.bookRepository.save(current.copy(seriesId = mapped.series.id))
                     }
                 }
             }
+            // writeBook leaves metadata to its caller, so the books this pass
+            // discovers have to be given theirs here — the ones it merely
+            // reparents already have it.
+            repositories.bookMetadataRepository.saveAll(
+                unseen.map { it.metadata.toOfflineBookMetadata(it.id) }
+            )
         }
     }
 
@@ -268,7 +284,8 @@ class OpdsMirrorWriter(private val repositories: OfflineRepositories) {
                 fileDownloadPath = PlatformFile(""),
             )
         )
-        repositories.bookMetadataRepository.save(book.metadata.toOfflineBookMetadata(book.id))
+        // Metadata is not written here: write() saves the whole batch of it in
+        // one go, and regroup() only ever touches books it already wrote.
         repositories.mediaRepository.save(
             OfflineMedia(
                 bookId = book.id,

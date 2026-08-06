@@ -41,6 +41,7 @@ import snd.komelia.ui.LoadState.Success
 import snd.komelia.ui.LoadState.Uninitialized
 import snd.komelia.ui.common.cards.defaultCardWidth
 import snd.komelia.ui.common.menus.LibraryMenuActions
+import snd.komelia.ui.library.LibraryTab.BOOKS
 import snd.komelia.ui.library.LibraryTab.COLLECTIONS
 import snd.komelia.ui.library.LibraryTab.FOR_YOU
 import snd.komelia.ui.library.LibraryTab.GENRE
@@ -134,6 +135,16 @@ class LibraryViewModel(
         taskEmitter = taskEmitter,
         librarySeriesFiltersRepository = librarySeriesFiltersRepository,
     )
+    val booksTabState = LibraryBooksTabState(
+        bookApi = bookApi,
+        notifications = appNotifications,
+        komgaEvents = komgaEvents,
+        settingsRepository = settingsRepository,
+        libraryId = libraryId,
+        taskEmitter = taskEmitter,
+        screenModelScope = screenModelScope,
+        cardWidth = cardWidth,
+    )
     val collectionsTabState = LibraryCollectionsTabState(
         collectionApi = collectionApi,
         appNotifications = appNotifications,
@@ -211,6 +222,7 @@ class LibraryViewModel(
             loadKeepReadingBooks()
             when (currentTab) {
                 SERIES -> seriesTabState.reload()
+                BOOKS -> booksTabState.reload()
                 COLLECTIONS -> collectionsTabState.reload()
                 READ_LISTS -> readListsTabState.reload()
                 GENRE -> genreTabState.reload()
@@ -391,6 +403,10 @@ class LibraryViewModel(
         currentTab = SERIES
     }
 
+    fun toBooksTab() {
+        currentTab = BOOKS
+    }
+
     fun toCollectionsTab() {
         currentTab = COLLECTIONS
     }
@@ -440,6 +456,7 @@ class LibraryViewModel(
 
 enum class LibraryTab {
     SERIES,
+    BOOKS,
     COLLECTIONS,
     READ_LISTS,
     GENRE,

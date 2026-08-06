@@ -20,7 +20,7 @@ import snd.komelia.komga.api.KomgaBookApi
 import snd.komelia.komga.api.model.KomeliaBook
 import snd.komelia.offline.tasks.OfflineTaskEmitter
 import snd.komelia.settings.CommonSettingsRepository
-import snd.komelia.ui.AppNotifications
+import snd.komelia.AppNotifications
 import snd.komelia.ui.LoadState
 import snd.komelia.ui.common.menus.BookMenuActions
 import snd.komga.client.common.KomgaPageRequest
@@ -119,7 +119,7 @@ class LibraryBooksTabState(
 
             val response = bookApi.getBookList(
                 conditionBuilder = allOfBooks {
-                    libraryId?.let { id -> libraryId { isEqualTo(id) } }
+                    libraryId?.let { id -> library { isEqualTo(id) } }
                 },
                 fullTextSearch = null,
                 pageRequest = KomgaPageRequest(

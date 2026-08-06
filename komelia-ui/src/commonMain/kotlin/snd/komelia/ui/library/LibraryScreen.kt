@@ -106,6 +106,7 @@ import snd.komelia.ui.common.components.PageSizeSelectionDropdown
 import snd.komelia.ui.common.menus.LibraryActionsMenu
 import snd.komelia.ui.common.menus.LibraryMenuActions
 import snd.komelia.ui.topbar.NewTopAppBar
+import snd.komelia.ui.library.LibraryTab.BOOKS
 import snd.komelia.ui.library.LibraryTab.COLLECTIONS
 import snd.komelia.ui.library.LibraryTab.FOR_YOU
 import snd.komelia.ui.library.LibraryTab.GENRE
@@ -120,6 +121,7 @@ import snd.komelia.ui.readlist.ReadListScreen
 import snd.komelia.ui.book.bookScreen
 import snd.komelia.ui.reader.readerScreen
 import snd.komelia.ui.common.cards.BookImageCard
+import snd.komelia.ui.common.itemlist.BookLazyCardGrid
 import snd.komelia.ui.common.menus.BookMenuActions
 import snd.komelia.ui.series.list.SeriesListContent
 import snd.komelia.ui.series.seriesScreen
@@ -176,6 +178,15 @@ class LibraryScreen(
                             Triple(
                                 state.totalSeriesCount,
                                 "series",
+                                state.pageLoadSize.collectAsState().value
+                            ) to state::onPageSizeChange
+                        }
+
+                        BOOKS -> {
+                            val state = vm.booksTabState
+                            Triple(
+                                state.totalBooksCount,
+                                if (state.totalBooksCount > 1) "livres" else "livre",
                                 state.pageLoadSize.collectAsState().value
                             ) to state::onPageSizeChange
                         }
@@ -237,6 +248,7 @@ class LibraryScreen(
                             readListsCount = vm.readListsCount,
                             genresCount = vm.genresCount,
                             onBrowseClick = vm::toBrowseTab,
+                            onBooksClick = vm::toBooksTab,
                             onCollectionsClick = vm::toCollectionsTab,
                             onReadListsClick = vm::toReadListsTab,
                             onGenreClick = vm::toGenreTab,
@@ -282,6 +294,7 @@ class LibraryScreen(
                                     showContinueReading = showContinueReading,
                                     onReadingClick = vm::toggleContinueReading,
                                     onBrowseClick = vm::toBrowseTab,
+                                    onBooksClick = vm::toBooksTab,
                                     onCollectionsClick = vm::toCollectionsTab,
                                     onReadListsClick = vm::toReadListsTab,
                                     onGenreClick = vm::toGenreTab,
@@ -329,6 +342,7 @@ class LibraryScreen(
                         val beforeContent = if (useNewUI2) newUI2BeforeContent else segmentedButtons
                         when (vm.currentTab) {
                             SERIES -> BrowseTab(vm.seriesTabState, beforeContent)
+                            BOOKS -> BooksTab(vm.booksTabState, beforeContent)
                             COLLECTIONS -> CollectionsTab(vm.collectionsTabState, beforeContent)
                             READ_LISTS -> ReadListsTab(vm.readListsTabState, beforeContent)
                             GENRE -> GenreTab(vm.genreTabState, beforeContent)
@@ -473,6 +487,56 @@ class LibraryScreen(
 
                     minSize = seriesTabState.cardWidth.collectAsState().value,
                     beforeContent = combinedBeforeContent
+                )
+            }
+        }
+    }
+
+    /**
+     * The library seen as books rather than as shelves.
+     *
+     * No filters yet on purpose: sorting and paging are what makes twenty
+     * thousand standalone books navigable at all, and everything else can wait
+     * until it is asked for.
+     */
+    @Composable
+    private fun BooksTab(booksTabState: LibraryBooksTabState, beforeContent: @Composable () -> Unit) {
+        val navigator = LocalNavigator.currentOrThrow
+        LaunchedEffect(libraryId) { booksTabState.initialize() }
+
+        when (val state = booksTabState.state.collectAsState().value) {
+            is Error -> ErrorContent(
+                message = state.exception.message ?: "Unknown Error",
+                onReload = { booksTabState.onPageChange(1) }
+            )
+
+            else -> Column(Modifier.fillMaxSize()) {
+                beforeContent()
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    LibraryBooksTabState.Sort.entries.forEach { sort ->
+                        FilterChip(
+                            selected = booksTabState.sortOrder == sort,
+                            onClick = { booksTabState.onSortChange(sort) },
+                            label = { Text(sort.label) },
+                            shape = AppFilterChipDefaults.shape(),
+                            colors = AppFilterChipDefaults.filterChipColors(),
+                            border = AppFilterChipDefaults.filterChipBorder(booksTabState.sortOrder == sort),
+                        )
+                    }
+                }
+                BookLazyCardGrid(
+                    books = booksTabState.books,
+                    onBookClick = { navigator.push(bookScreen(it)) },
+                    onBookReadClick = null,
+                    bookMenuActions = booksTabState.bookMenuActions(),
+                    totalPages = booksTabState.totalBooksPages,
+                    currentPage = booksTabState.currentBooksPage,
+                    onPageChange = booksTabState::onPageChange,
+                    minSize = booksTabState.cardWidth.collectAsState().value,
                 )
             }
         }
@@ -779,6 +843,7 @@ private fun LibraryTabChips(
     showContinueReading: Boolean,
     onReadingClick: () -> Unit,
     onBrowseClick: () -> Unit,
+    onBooksClick: () -> Unit = {},
     onCollectionsClick: () -> Unit,
     onReadListsClick: () -> Unit,
     onGenreClick: () -> Unit = {},
@@ -805,6 +870,19 @@ private fun LibraryTabChips(
                     colors = chipColors,
                     shape = AppFilterChipDefaults.shape(),
                     border = AppFilterChipDefaults.filterChipBorder(currentTab == SERIES),
+                )
+            }
+            // Always offered: a catalogue mirrored from Calibre-Web is mostly
+            // standalone books, and the series view answers for them with
+            // thousands of one-book shelves.
+            item {
+                FilterChip(
+                    selected = currentTab == BOOKS,
+                    onClick = onBooksClick,
+                    label = { Text(LocalStrings.current.ui.books) },
+                    colors = chipColors,
+                    shape = AppFilterChipDefaults.shape(),
+                    border = AppFilterChipDefaults.filterChipBorder(currentTab == BOOKS),
                 )
             }
             if (collectionsCount > 0) {
@@ -982,6 +1060,7 @@ private fun LibrarySegmentedButtons(
     readListsCount: Int,
     genresCount: Int = 0,
     onBrowseClick: () -> Unit,
+    onBooksClick: () -> Unit = {},
     onCollectionsClick: () -> Unit,
     onReadListsClick: () -> Unit,
     onGenreClick: () -> Unit = {},
@@ -1014,6 +1093,13 @@ private fun LibrarySegmentedButtons(
                 colors = colors
             )
             var index = 1
+            SegmentedButton(
+                selected = currentTab == BOOKS,
+                onClick = onBooksClick,
+                shape = SegmentedButtonDefaults.itemShape(index = index++, count = tabCount),
+                label = { Text(LocalStrings.current.ui.books) },
+                colors = colors
+            )
             if (collectionsCount > 0) {
                 SegmentedButton(
                     selected = currentTab == COLLECTIONS,
@@ -1053,8 +1139,8 @@ private fun LibrarySegmentedButtons(
 }
 
 private fun getTabCount(collectionsCount: Int, readListsCount: Int, genresCount: Int = 0): Int {
-    // Series + For you always exist; the rest depend on the library's content.
-    var count = 2
+    // Series, Books and For you always exist; the rest depend on the content.
+    var count = 3
     if (collectionsCount > 0) count++
     if (readListsCount > 0) count++
     if (genresCount > 0) count++

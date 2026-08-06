@@ -190,4 +190,57 @@ class OpdsCatalogueWalkerTest {
         assertEquals(listOf(1, 2), seen.map { it.books }.filter { it > 0 })
         assertEquals("Anonyme", seen.last().current)
     }
+
+    /**
+     * A counted feed has already told us every address it will ever have, so we
+     * stop asking one at a time. That is the difference between a hundred and
+     * seventy-five round trips in single file and eleven waves of sixteen.
+     */
+    @Test
+    fun readsACountedFeedWithoutFollowingEveryNextLink() = runTest {
+        val asked = mutableListOf<String>()
+        fun counted(entries: List<OpdsEntry>, next: String?) = OpdsFeed(
+            id = null,
+            title = null,
+            links = next?.let { listOf(OpdsLink(href = it, rel = OpdsRel.NEXT)) } ?: emptyList(),
+            entries = entries,
+            totalResults = 5,
+            itemsPerPage = 2,
+        )
+
+        val catalogue = mapOf(
+            "/opds" to feed(listOf(nav("Auteurs", "/opds/author"))),
+            "/opds/author" to feed(listOf(nav("Anonyme", "/opds/author/1"))),
+            "/opds/author/1" to counted(listOf(book("b1", "Un"), book("b2", "Deux")), "/opds/author/1?offset=2"),
+            // Deliberately links back to the first page. Nothing should follow
+            // it: the remaining addresses are computed from the count.
+            "/opds/author/1?offset=2" to counted(
+                listOf(book("b3", "Trois"), book("b4", "Quatre")),
+                "/opds/author/1",
+            ),
+            "/opds/author/1?offset=4" to counted(listOf(book("b5", "Cinq")), null),
+        )
+        val walker = OpdsCatalogueWalker(fetch = { url ->
+            asked += url
+            catalogue[url] ?: feed(emptyList())
+        })
+
+        val shelves = buildList { walker.walkBooks("/opds") { add(it) } }
+
+        assertEquals(listOf("Un", "Deux", "Trois", "Quatre", "Cinq"), shelves.map { it.title })
+        assertTrue("/opds/author/1?offset=4" in asked, "the last page was worked out, not followed")
+    }
+
+    /** Without a count there is nothing to compute from, so we ask page by page. */
+    @Test
+    fun stillFollowsNextLinksWhenTheFeedIsNotCounted() = runTest {
+        val catalogue = mapOf(
+            "/opds" to feed(listOf(nav("Auteurs", "/opds/author"))),
+            "/opds/author" to feed(listOf(nav("Anonyme", "/opds/author/1"))),
+            "/opds/author/1" to feed(listOf(book("b1", "Un")), next = "/opds/author/1?offset=1"),
+            "/opds/author/1?offset=1" to feed(listOf(book("b2", "Deux"))),
+        )
+
+        assertEquals(listOf("Un", "Deux"), books(catalogue).map { it.title })
+    }
 }

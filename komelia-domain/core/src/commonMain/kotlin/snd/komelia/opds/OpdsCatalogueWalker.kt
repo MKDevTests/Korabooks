@@ -40,6 +40,9 @@ private const val PAGE_LIMIT = 400
  */
 private const val PEEK_SLICE = 256
 
+/** A query parameter holding a plain number — a page offset, if it is one. */
+private val NUMERIC_PARAM = Regex("([?&][A-Za-z_][A-Za-z_0-9]*=)(\\d+)")
+
 /** What the walk has found so far, for a screen that would rather not look frozen. */
 data class OpdsWalkProgress(val shelves: Int, val books: Int, val current: String)
 
@@ -71,6 +74,17 @@ class OpdsCatalogueWalker(
     private val fetch: suspend (String) -> OpdsFeed,
     private val maxDepth: Int = 4,
 ) {
+    /**
+     * The one budget of requests in flight, shared by every phase.
+     *
+     * Held around a single fetch and never around a branch: a walk that takes a
+     * permit for a whole letter and then asks for its pages would wait on
+     * permits it is itself holding. Bounding the fetch instead means coroutines
+     * can be created freely — only the network is rationed.
+     */
+    private val gate = Semaphore(PARALLELISM)
+
+    private suspend fun fetchLimited(url: String): OpdsFeed = gate.withPermit { fetch(url) }
 
     /**
      * Every book in the catalogue, one shelf each.
@@ -109,25 +123,24 @@ class OpdsCatalogueWalker(
         // Emitted page by page, and pages arrive every sixty books. Collecting
         // a whole letter first meant nothing appeared for minutes on a letter
         // holding two thousand books — which is what the first real run did.
-        // A permit each, not a batch of sixteen: letters are wildly uneven, and
-        // waiting for a whole batch meant the fourteen pages of "L" held the
-        // other fifteen slots empty while they finished.
+        // All branches at once, the gate rationing the fetches underneath them.
+        // Batches of sixteen were worse than useless here: the branches are
+        // wildly uneven — one letter of this catalogue holds ten thousand books
+        // and a hundred and seventy pages — so a batch lasted as long as its
+        // largest member with every other slot idle.
         val lock = Mutex()
-        val gate = Semaphore(PARALLELISM)
         coroutineScope {
             branches.map { branch ->
                 async {
-                    gate.withPermit {
-                        forEachPage(branch) { page ->
-                            val found = page.entries.filter { it.isBook }
-                            lock.withLock {
-                                for (book in found) {
-                                    if (!seen.add(book.id)) continue
-                                    shelfCount++
-                                    onShelf(OpdsShelf(book.title, listOf(book), standalone = true))
-                                }
-                                onProgress(OpdsWalkProgress(shelfCount, seen.size, branch.title))
+                    forEachPage(branch) { page ->
+                        val found = page.entries.filter { it.isBook }
+                        lock.withLock {
+                            for (book in found) {
+                                if (!seen.add(book.id)) continue
+                                shelfCount++
+                                onShelf(OpdsShelf(book.title, listOf(book), standalone = true))
                             }
+                            onProgress(OpdsWalkProgress(shelfCount, seen.size, branch.title))
                         }
                     }
                 }
@@ -282,17 +295,14 @@ class OpdsCatalogueWalker(
         // Sliced only to bound memory, since every peeked page is kept until
         // the slice is done.
         val found = mutableListOf<Branch>()
-        val gate = Semaphore(PARALLELISM)
         for (slice in entries.chunked(PEEK_SLICE)) {
             val peeked = coroutineScope {
                 slice.map { entry ->
                     async {
                         val href = entry.navigation?.href
                         val page = href?.let {
-                            gate.withPermit {
-                                report(entry.title)
-                                runCatching { fetch(it) }.getOrNull()
-                            }
+                            report(entry.title)
+                            runCatching { fetchLimited(it) }.getOrNull()
                         }
                         Triple(entry, href, page)
                     }
@@ -322,28 +332,73 @@ class OpdsCatalogueWalker(
      * long before the last.
      */
     private suspend fun forEachPage(branch: Branch, block: suspend (OpdsFeed) -> Unit) {
-        var page = branch.first ?: runCatching { fetch(branch.href) }.getOrNull() ?: return
+        val first = branch.first ?: runCatching { fetchLimited(branch.href) }.getOrNull() ?: return
+        block(first)
+
+        // A feed that says how many results it has, and links its second page by
+        // an offset, has already told us the address of every page it will ever
+        // have. Following rel="next" one answer at a time turned that into a
+        // hundred and seventy-five round trips taken in single file — measured
+        // at three seconds each, nine minutes for one letter, with fifteen of
+        // the sixteen slots idle throughout.
+        val known = pageUrlsAfter(first)
+        if (known != null) {
+            for (slice in known.chunked(PEEK_SLICE)) {
+                val pages = coroutineScope {
+                    slice.map { url -> async { runCatching { fetchLimited(url) }.getOrNull() } }.awaitAll()
+                }
+                for (page in pages) block(page ?: continue)
+            }
+            return
+        }
+
+        // Otherwise the catalogue only ever reveals the next address by handing
+        // over the current page, and there is nothing to do but ask in turn.
+        var page = first
         val visited = mutableSetOf(branch.href)
-        var count = 0
+        var count = 1
         while (count < PAGE_LIMIT) {
-            block(page)
-            count++
             val next = page.nextPage ?: return
             if (!visited.add(next)) return
-            page = runCatching { fetch(next) }.getOrNull() ?: return
+            page = runCatching { fetchLimited(next) }.getOrNull() ?: return
+            block(page)
+            count++
+        }
+    }
+
+    /**
+     * Every page after the first, when they can be worked out rather than asked
+     * for.
+     *
+     * Deliberately narrow. The second page's address must differ from the
+     * first's by exactly one numeric parameter whose value is the page size —
+     * that is a record offset and nothing else, so multiplying it is safe. Two
+     * candidates, or a value that is not the page size, and we decline: an
+     * invented address is worse than a slow walk.
+     */
+    private fun pageUrlsAfter(first: OpdsFeed): List<String>? {
+        val total = first.totalResults ?: return null
+        val perPage = first.itemsPerPage?.takeIf { it > 0 } ?: return null
+        val next = first.nextPage ?: return null
+        if (total <= perPage) return null
+
+        val offsets = NUMERIC_PARAM.findAll(next)
+            .filter { it.groupValues[2].toIntOrNull() == perPage }
+            .toList()
+        if (offsets.size != 1) return null
+        val value = offsets.single().groups[2]?.range ?: return null
+
+        val pages = (total + perPage - 1) / perPage
+        if (pages > PAGE_LIMIT) return null
+        return (1 until pages).map { index ->
+            next.replaceRange(value, (index * perPage).toString())
         }
     }
 
     /** An index and its continuations, guarding against a page that links to itself. */
     private suspend fun allPages(url: String): List<OpdsFeed> {
         val collected = mutableListOf<OpdsFeed>()
-        val visited = mutableSetOf<String>()
-        var next: String? = url
-        while (next != null && collected.size < PAGE_LIMIT && visited.add(next)) {
-            val page = runCatching { fetch(next) }.getOrNull() ?: break
-            collected += page
-            next = page.nextPage
-        }
+        forEachPage(Branch(url, url, null)) { collected += it }
         return collected
     }
 

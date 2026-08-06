@@ -173,7 +173,11 @@ class OpdsCatalogueWalkerTest {
 
         walkerOver(catalogue).walk("/opds") { seen += it }
 
-        assertEquals(listOf(1, 2), seen.map { it.books })
+        // Reading the index is announced too, before a single book exists to
+        // count — without it the screen sits silent through the longest part of
+        // a real sync.
+        assertTrue(seen.any { it.books == 0 }, "the index descent is announced")
+        assertEquals(listOf(1, 2), seen.map { it.books }.filter { it > 0 })
         assertEquals("Deux", seen.last().current)
     }
 }

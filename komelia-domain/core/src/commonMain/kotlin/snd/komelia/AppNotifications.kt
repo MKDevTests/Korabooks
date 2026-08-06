@@ -11,7 +11,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import snd.komf.client.toKomfErrorResponse
 import snd.komga.client.common.toErrorResponse
 import snd.komga.client.common.toViolationResponse
 import kotlin.time.Clock
@@ -85,7 +84,6 @@ class AppNotifications {
 
 private suspend fun parseJsonErrorMessage(exception: ResponseException): String {
     return exception.toErrorResponse()?.message
-        ?: exception.toKomfErrorResponse()?.message
         ?: exception.toViolationResponse()
             ?.violations?.firstOrNull()?.let { "${it.fieldName}: ${it.message}" }
         ?: exception.response.bodyAsText()

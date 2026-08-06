@@ -75,7 +75,6 @@ kotlin {
             implementation(libs.filekit.core)
             implementation(libs.filekit.dialogs)
             implementation(libs.filekit.dialogs.compose)
-            implementation(libs.komf.client)
             implementation(libs.komga.client)
             implementation(libs.ktor.client.core)
             implementation(libs.ktor.client.content.negotiation)

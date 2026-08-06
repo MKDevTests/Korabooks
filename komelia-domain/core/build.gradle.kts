@@ -50,7 +50,6 @@ kotlin {
             implementation(libs.coil.compose)
             implementation(libs.coil.network.ktor3)
             implementation(libs.filekit.core)
-            api(libs.komf.client)
             api(libs.komga.client)
             api(libs.ktor.client.core)
             api(libs.ktor.client.content.negotiation)

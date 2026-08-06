@@ -17,9 +17,6 @@ import snd.komelia.ui.dialogs.user.UserEditDialogViewModel.AgeRestriction.EXCLUD
 import snd.komelia.ui.dialogs.user.UserEditDialogViewModel.AgeRestriction.NONE
 import snd.komelia.ui.library.LibrarySeriesTabState
 import snd.komelia.ui.series.SeriesFilterState
-import snd.komf.api.KomfCoreProviders
-import snd.komf.api.KomfProviders
-import snd.komf.api.UnknownKomfProvider
 import snd.komga.client.book.KomgaReadStatus
 import snd.komga.client.book.KomgaReadStatus.IN_PROGRESS
 import snd.komga.client.book.KomgaReadStatus.READ
@@ -67,7 +64,6 @@ data class AppStrings(
     val settings: SettingsStrings,
     val imageSettings: ImageSettingsStrings,
     val errorCodes: ErrorCodes,
-    val komf: KomfStrings,
     val navigation: NavigationStrings,
     val suggestions: SuggestionStrings,
     val ui: UiStrings,
@@ -255,7 +251,6 @@ class UiStrings(private val values: Map<String, String>) {
     val autoDetectWebtoon: String get() = at("autoDetectWebtoon")
     val autoDetectWebtoonSwitchTo: String get() = at("autoDetectWebtoonSwitchTo")
     val autoIdentify: String get() = at("autoIdentify")
-    val autoIdentifyKomf: String get() = at("autoIdentifyKomf")
     val autoRewind: String get() = at("autoRewind")
     val autoSkipBlankPages: String get() = at("autoSkipBlankPages")
     val automaticBackups: String get() = at("automaticBackups")
@@ -421,7 +416,6 @@ class UiStrings(private val values: Map<String, String>) {
     val emptyTrashForLibrary: String get() = at("emptyTrashForLibrary")
     val enableAutomaticBackups: String get() = at("enableAutomaticBackups")
     val enableIgnoreList: String get() = at("enableIgnoreList")
-    val enableKomfIntegration: String get() = at("enableKomfIntegration")
     val enableMetadataUpdateJobsFor: String get() = at("enableMetadataUpdateJobsFor")
     val enableNcnnUpscalerMobileOnly: String get() = at("enableNcnnUpscalerMobileOnly")
     val enableNotificationJobsForLibraries: String get() = at("enableNotificationJobsForLibraries")
@@ -497,7 +491,6 @@ class UiStrings(private val values: Map<String, String>) {
     val highlight: String get() = at("highlight")
     val highlightCompleteSeries: String get() = at("highlightCompleteSeries")
     val home: String get() = at("home")
-    val identifyKomf: String get() = at("identifyKomf")
     val ifAggregateOptionIsEnabled: String get() = at("ifAggregateOptionIsEnabled")
     val ifAggregateOptionIsEnabled2: String get() = at("ifAggregateOptionIsEnabled2")
     val ifEntryAlreadyHasA: String get() = at("ifEntryAlreadyHasA")
@@ -537,9 +530,6 @@ class UiStrings(private val values: Map<String, String>) {
     val kavitaUrl: String get() = at("kavitaUrl")
     val keepScreenOnWhileReading: String get() = at("keepScreenOnWhileReading")
     val key: String get() = at("key")
-    val komfSeriesAutoIdentify: String get() = at("komfSeriesAutoIdentify")
-    val komfSettings: String get() = at("komfSettings")
-    val komfUrl: String get() = at("komfUrl")
     val komgaLogin: String get() = at("komgaLogin")
     val komgaPassword: String get() = at("komgaPassword")
     val komgaProcessing: String get() = at("komgaProcessing")
@@ -775,7 +765,6 @@ class UiStrings(private val values: Map<String, String>) {
     val requiresWriteAccessToFiles: String get() = at("requiresWriteAccessToFiles")
     val resetAll: String get() = at("resetAll")
     val resetChannel: String get() = at("resetChannel")
-    val resetMetadataKomf: String get() = at("resetMetadataKomf")
     val resetToDefault: String get() = at("resetToDefault")
     val resetToInternal: String get() = at("resetToInternal")
     val respectPublisherColors: String get() = at("respectPublisherColors")
@@ -1023,49 +1012,6 @@ data class SuggestionStrings(
     val unmarkPlanned: String,
     val notInterested: String,
 )
-
-data class KomfStrings(
-    val providerSettings: KomfProviderSettingsStrings
-)
-
-data class KomfProviderSettingsStrings(
-    val providerAniList: String,
-    val providerBangumi: String,
-    val providerBookWalker: String,
-    val providerComicVine: String,
-    val providerHentag: String,
-    val providerKodansha: String,
-    val providerMal: String,
-    val providerMangaBaka: String,
-    val providerMangaUpdates: String,
-    val providerMangaDex: String,
-    val providerNautiljon: String,
-    val providerYenPress: String,
-    val providerViz: String,
-    val providerWebtoons: String,
-
-    ) {
-
-    fun forProvider(provider: KomfProviders) =
-        when (provider) {
-            KomfCoreProviders.ANILIST -> providerAniList
-            KomfCoreProviders.BANGUMI -> providerBangumi
-            KomfCoreProviders.BOOK_WALKER -> providerBookWalker
-            KomfCoreProviders.COMIC_VINE -> providerComicVine
-            KomfCoreProviders.HENTAG -> providerHentag
-            KomfCoreProviders.KODANSHA -> providerKodansha
-            KomfCoreProviders.MAL -> providerMal
-            KomfCoreProviders.MANGA_UPDATES -> providerMangaUpdates
-            KomfCoreProviders.MANGADEX -> providerMangaDex
-            KomfCoreProviders.NAUTILJON -> providerNautiljon
-            KomfCoreProviders.YEN_PRESS -> providerYenPress
-            KomfCoreProviders.VIZ -> providerViz
-            KomfCoreProviders.MANGA_BAKA -> providerMangaBaka
-            KomfCoreProviders.WEBTOONS -> providerWebtoons
-            is UnknownKomfProvider -> provider.name
-        }
-}
-
 
 data class SeriesViewStrings(
     val statusEnded: String,

@@ -36,7 +36,6 @@ import snd.komelia.updates.OnnxRuntimeInstaller
 import snd.komelia.updates.RapidOcrModelDownloader
 import snd.komelia.updates.ReleaseNotesService
 import snd.komelia.updates.WhisperModelDownloader
-import snd.komf.client.KomfClientFactory
 
 import snd.komelia.sync.ReaderSyncService
 
@@ -52,7 +51,6 @@ data class DependencyContainer(
     val similarityIndexBuilder: snd.komelia.similarity.SimilarityIndexBuilder? = null,
 
     val isOffline: StateFlow<Boolean>,
-    val komfClientFactory: KomfClientFactory,
     val appNotifications: AppNotifications,
     val komgaSharedState: KomgaAuthenticationState,
     val komgaEvents: ManagedKomgaEvents,

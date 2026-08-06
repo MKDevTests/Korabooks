@@ -75,7 +75,6 @@ import snd.komelia.updates.OnnxRuntimeInstaller
 import snd.komelia.updates.RapidOcrModelDownloader
 import snd.komelia.updates.UpdateClient
 import snd.komelia.updates.WhisperModelDownloader
-import snd.komf.client.KomfClientFactory
 import snd.komga.client.KomgaClientFactory
 import snd.komga.client.sse.KomgaEvent
 import snd.komga.client.user.KomgaUser
@@ -130,7 +129,6 @@ abstract class AppModule(
         )
 
         val baseUrl = appRepositories.settingsRepository.getServerUrl().stateIn(initScope)
-        val komfUrl = appRepositories.komfSettingsRepository.getKomfUrl().stateIn(initScope)
 
         val cookiesStorage = RememberMePersistingCookieStore(
             baseUrl.map { Url(it) }.stateIn(initScope),
@@ -148,11 +146,6 @@ abstract class AppModule(
             .ktor(ktor)
             .baseUrl { baseUrl.value }
             .cookieStorage(cookiesStorage)
-            .build()
-
-        val komfClientFactory = KomfClientFactory.Builder()
-            .baseUrl { komfUrl.value }
-            .ktor(ktor)
             .build()
 
         val imageDecoder = createImageDecoder()
@@ -369,7 +362,6 @@ abstract class AppModule(
             hiddenSeriesController = hiddenSeriesController,
             similarityIndexBuilder = similarityIndexBuilder,
             isOffline = isOffline,
-            komfClientFactory = komfClientFactory,
             appNotifications = appNotifications,
             komgaSharedState = komgaSharedState,
             komgaEvents = komgaEvents,

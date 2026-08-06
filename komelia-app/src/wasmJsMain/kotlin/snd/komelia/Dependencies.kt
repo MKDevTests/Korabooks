@@ -41,7 +41,6 @@ import snd.komelia.image.KomeliaImageDecoder
 import snd.komelia.image.WasmReaderImageFactory
 import snd.komelia.image.coil.BlobFetcher
 import snd.komelia.image.wasm.client.WorkerImageDecoder
-import snd.komf.client.KomfClientFactory
 import snd.komga.client.KomgaClientFactory
 
 suspend fun initDependencies(stateFlowScope: CoroutineScope): WasmDependencyContainer {
@@ -81,7 +80,6 @@ suspend fun initDependencies(stateFlowScope: CoroutineScope): WasmDependencyCont
     val levelsPresetsRepository = IDBColorLevelsPresetRepository(idb)
 
     val baseUrl = appSettingsRepository.getServerUrl().stateIn(stateFlowScope)
-    val komfUrl = komfSettingsRepository.getKomfUrl().stateIn(stateFlowScope)
     overrideFetch { baseUrl.value }
 
     val ktorClient = createKtorClient(baseUrl)
@@ -89,11 +87,6 @@ suspend fun initDependencies(stateFlowScope: CoroutineScope): WasmDependencyCont
 
     val coil = createCoil(baseUrl, ktorClient, workerDecoder)
     SingletonImageLoader.setSafe { coil }
-
-    val komfClientFactory = KomfClientFactory.Builder()
-        .baseUrl { komfUrl.value }
-        .ktor(ktorClient)
-        .build()
 
     val colorCorrectionStep = ColorCorrectionStep(bookColorCorrectionRepository)
     val imagePipeline = createImagePipeline(colorCorrectionStep)
@@ -123,7 +116,6 @@ suspend fun initDependencies(stateFlowScope: CoroutineScope): WasmDependencyCont
         bookColorCorrectionRepository = bookColorCorrectionRepository,
 
         komgaClientFactory = komgaClientFactory,
-        komfClientFactory = komfClientFactory,
         appUpdater = null,
         coilImageLoader = coil,
         bookImageLoader = readerImageLoader,

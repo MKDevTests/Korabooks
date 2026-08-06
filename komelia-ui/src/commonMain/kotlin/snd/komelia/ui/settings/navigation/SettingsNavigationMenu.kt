@@ -97,6 +97,15 @@ fun SettingsNavigationMenu(
             title = LocalStrings.current.ui.appSettings,
             query = query,
             entries = buildList {
+                // First, because it is the only setting without which the app
+                // has nothing at all to show.
+                add(
+                    NavEntry(
+                        label = "Catalogue",
+                        onClick = { onNavigation(snd.komelia.ui.settings.catalogue.CatalogueSettingsScreen()) },
+                        isSelected = currentScreen is snd.komelia.ui.settings.catalogue.CatalogueSettingsScreen,
+                    )
+                )
                 add(
                     NavEntry(
                         label = LocalStrings.current.ui.appearance,

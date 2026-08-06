@@ -82,6 +82,8 @@ data class DependencyContainer(
     val panelDetector: KomeliaPanelDetector?,
 
     val offlineDependencies: OfflineDependencies,
+    /** The OPDS catalogue this app mirrors: its address, its login, its sync. */
+    val opdsCatalogue: snd.komelia.opds.OpdsCatalogueService,
     val nextBookService: NextBookService,
     /** Komga Toolkit automation client (admin release-tracking / next-releases). */
     val toolkitApi: snd.komelia.toolkit.ToolkitApi,

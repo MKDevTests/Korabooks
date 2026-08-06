@@ -370,6 +370,12 @@ abstract class AppModule(
                 ktor = ktor.config { install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) } },
             ),
             bookCompletionEvents = bookCompletionEvents,
+            opdsCatalogue = snd.komelia.opds.OpdsCatalogueService(
+                ktor = ktor,
+                settings = appRepositories.settingsRepository,
+                secrets = appRepositories.secretsRepository,
+                repositories = offlineRepositories,
+            ),
 
             coilContext = androidContext,
             coilImageLoader = coil,

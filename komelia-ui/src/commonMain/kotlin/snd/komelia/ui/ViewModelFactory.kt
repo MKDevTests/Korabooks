@@ -905,6 +905,10 @@ class ViewModelFactory(
         )
     }
 
+    fun getCatalogueSettingsViewModel(): snd.komelia.ui.settings.catalogue.CatalogueSettingsViewModel {
+        return snd.komelia.ui.settings.catalogue.CatalogueSettingsViewModel(dependencies.opdsCatalogue)
+    }
+
     fun getCatalogueStartViewModel(): snd.komelia.ui.startup.CatalogueStartViewModel {
         return snd.komelia.ui.startup.CatalogueStartViewModel(
             offlineSettingsRepository = dependencies.offlineDependencies.repositories.offlineSettingsRepository,

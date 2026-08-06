@@ -26,6 +26,7 @@ import snd.komelia.ui.common.menus.BookMenuActions
 import snd.komga.client.common.KomgaPageRequest
 import snd.komga.client.common.KomgaSort
 import snd.komga.client.library.KomgaLibraryId
+import snd.komga.client.search.KomgaSearchCondition
 import snd.komga.client.search.allOfBooks
 import snd.komga.client.sse.KomgaEvent
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -74,6 +75,10 @@ class LibraryBooksTabState(
     var letterFilter by mutableStateOf<String?>(null)
         private set
     var searchTerm by mutableStateOf("")
+        private set
+
+    /** Set by the Authors tab: the books of one person, shown as a normal grid. */
+    var authorFilter by mutableStateOf<String?>(null)
         private set
 
     val pageLoadSize = MutableStateFlow(20)
@@ -130,15 +135,32 @@ class LibraryBooksTabState(
         screenModelScope.launch { load(1) }
     }
 
+    /**
+     * Shows one author's books, and drops the filters that would hide them.
+     *
+     * Arriving here from the Authors tab means asking a question about a
+     * person, not about the letter or the search term left over from the last
+     * time the grid was used.
+     */
+    fun onAuthorFilterChange(name: String?) {
+        authorFilter = name
+        if (name != null) {
+            letterFilter = null
+            searchTerm = ""
+        }
+        screenModelScope.launch { load(1) }
+    }
+
     fun clearFilters() {
         letterFilter = null
         searchTerm = ""
+        authorFilter = null
         sortOrder = Sort.TITLE_ASC
         screenModelScope.launch { load(1) }
     }
 
     val hasActiveFilter: Boolean
-        get() = letterFilter != null || searchTerm.isNotBlank()
+        get() = letterFilter != null || searchTerm.isNotBlank() || authorFilter != null
 
     fun bookMenuActions() = BookMenuActions(bookApi, notifications, screenModelScope, taskEmitter)
 
@@ -149,6 +171,12 @@ class LibraryBooksTabState(
             val response = bookApi.getBookList(
                 conditionBuilder = allOfBooks {
                     libraryId?.let { id -> library { isEqualTo(id) } }
+                    // Role left open: the mirror credits everyone as a writer,
+                    // and pinning the role would only make the filter brittle
+                    // if that ever stops being true.
+                    authorFilter?.let { name ->
+                        author { isEqualTo(KomgaSearchCondition.AuthorMatch(name, null)) }
+                    }
                     // Titles are matched on their first letter, digits sharing
                     // the "#" bucket the way every index in this app does.
                     when (val letter = letterFilter) {

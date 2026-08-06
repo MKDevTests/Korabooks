@@ -13,8 +13,15 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.filled.Close
+import snd.komelia.ui.common.components.Pagination
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
@@ -112,6 +119,7 @@ import snd.komelia.ui.common.components.PageSizeSelectionDropdown
 import snd.komelia.ui.common.menus.LibraryActionsMenu
 import snd.komelia.ui.common.menus.LibraryMenuActions
 import snd.komelia.ui.topbar.NewTopAppBar
+import snd.komelia.ui.library.LibraryTab.AUTHORS
 import snd.komelia.ui.library.LibraryTab.BOOKS
 import snd.komelia.ui.library.LibraryTab.GENRE_TREE
 import snd.komelia.ui.library.LibraryTab.COLLECTIONS
@@ -199,6 +207,15 @@ class LibraryScreen(
                             ) to state::onPageSizeChange
                         }
 
+                        AUTHORS -> {
+                            val state = vm.authorsTabState
+                            Triple(
+                                state.totalAuthorsCount,
+                                if (state.totalAuthorsCount > 1) "auteurs" else "auteur",
+                                state.pageLoadSize.collectAsState().value
+                            ) to state::onPageSizeChange
+                        }
+
                         GENRE_TREE -> {
                             val count = vm.genresTabState.roots.size
                             Triple(count, if (count > 1) "genres" else "genre", 50) to { _: Int -> }
@@ -264,6 +281,7 @@ class LibraryScreen(
                             genresCount = vm.genresCount,
                             onBrowseClick = vm::toBrowseTab,
                             onBooksClick = vm::toBooksTab,
+                            onAuthorsClick = vm::toAuthorsTab,
                             onGenreTreeClick = vm::toGenreTreeTab,
                             onCollectionsClick = vm::toCollectionsTab,
                             onReadListsClick = vm::toReadListsTab,
@@ -313,6 +331,7 @@ class LibraryScreen(
                                     onReadingClick = vm::toggleContinueReading,
                                     onBrowseClick = vm::toBrowseTab,
                                     onBooksClick = vm::toBooksTab,
+                                    onAuthorsClick = vm::toAuthorsTab,
                                     onGenreTreeClick = vm::toGenreTreeTab,
                                     onCollectionsClick = vm::toCollectionsTab,
                                     onReadListsClick = vm::toReadListsTab,
@@ -362,6 +381,7 @@ class LibraryScreen(
                         when (vm.currentTab) {
                             SERIES -> BrowseTab(vm.seriesTabState, beforeContent)
                             BOOKS -> BooksTab(vm.booksTabState, beforeContent)
+                            AUTHORS -> AuthorsTab(vm.authorsTabState, vm::showAuthor, beforeContent)
                             GENRE_TREE -> GenresTab(vm.genresTabState, vm::showGenre, beforeContent)
                             COLLECTIONS -> CollectionsTab(vm.collectionsTabState, beforeContent)
                             READ_LISTS -> ReadListsTab(vm.readListsTabState, beforeContent)
@@ -532,6 +552,21 @@ class LibraryScreen(
 
             else -> Column(Modifier.fillMaxSize()) {
                 beforeContent()
+                // Shown only when the grid is answering about one person: the
+                // chip is both the explanation for a short list and the way out
+                // of it.
+                booksTabState.authorFilter?.let { author ->
+                    FilterChip(
+                        selected = true,
+                        onClick = { booksTabState.onAuthorFilterChange(null) },
+                        label = { Text("Auteur : $author") },
+                        trailingIcon = { Icon(Icons.Default.Close, contentDescription = null) },
+                        shape = AppFilterChipDefaults.shape(),
+                        colors = AppFilterChipDefaults.filterChipColors(),
+                        border = AppFilterChipDefaults.filterChipBorder(true),
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                    )
+                }
                 OutlinedTextField(
                     value = booksTabState.searchTerm,
                     onValueChange = booksTabState::onSearchChange,
@@ -583,6 +618,97 @@ class LibraryScreen(
                     onPageChange = booksTabState::onPageChange,
                     minSize = booksTabState.cardWidth.collectAsState().value,
                 )
+            }
+        }
+    }
+
+    /**
+     * The library seen as people.
+     *
+     * A name is a short thing, so this is a grid rather than a list: the same
+     * density setting that governs the covers decides how many columns of names
+     * fit, and at the tightest setting a phone shows three at a time. Tapping
+     * one hands the question to the books grid, which already knows how to sort
+     * and page a few dozen titles.
+     */
+    @Composable
+    private fun AuthorsTab(
+        authorsTabState: LibraryAuthorsTabState,
+        onAuthorClick: (String) -> Unit,
+        beforeContent: @Composable () -> Unit,
+    ) {
+        LaunchedEffect(libraryId) { authorsTabState.initialize() }
+
+        when (val state = authorsTabState.state.collectAsState().value) {
+            is Error -> ErrorContent(
+                message = state.exception.message ?: "Unknown Error",
+                onReload = { authorsTabState.onPageChange(1) }
+            )
+
+            else -> Column(Modifier.fillMaxSize()) {
+                beforeContent()
+                OutlinedTextField(
+                    value = authorsTabState.searchTerm,
+                    onValueChange = authorsTabState::onSearchChange,
+                    label = { Text(LocalStrings.current.ui.search) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp),
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (authorsTabState.hasActiveFilter) {
+                        TextButton(onClick = authorsTabState::clearFilters) {
+                            Text(LocalStrings.current.ui.clearAll)
+                        }
+                    }
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        "${authorsTabState.totalAuthorsCount} auteurs",
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                    PageSizeSelectionDropdown(
+                        currentSize = authorsTabState.pageLoadSize.collectAsState().value,
+                        onPageSizeChange = authorsTabState::onPageSizeChange,
+                    )
+                }
+
+                // A name never needs a whole cover's width, so the density
+                // setting is halved: "Normale" would otherwise give one very
+                // wide column of very short text.
+                val minCellWidth = (authorsTabState.cardWidth.collectAsState().value / 2)
+                    .coerceAtLeast(130.dp)
+                LazyVerticalGrid(
+                    columns = GridCells.Adaptive(minCellWidth),
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    items(authorsTabState.authors, key = { it }) { name ->
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            modifier = Modifier.fillMaxWidth().clickable { onAuthorClick(name) },
+                        ) {
+                            Text(
+                                name,
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 12.dp),
+                            )
+                        }
+                    }
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Pagination(
+                            totalPages = authorsTabState.totalPages,
+                            currentPage = authorsTabState.currentPage,
+                            onPageChange = authorsTabState::onPageChange,
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
+                        )
+                    }
+                }
             }
         }
     }
@@ -969,6 +1095,7 @@ private fun LibraryTabChips(
     onReadingClick: () -> Unit,
     onBrowseClick: () -> Unit,
     onBooksClick: () -> Unit = {},
+    onAuthorsClick: () -> Unit = {},
     onGenreTreeClick: () -> Unit = {},
     onCollectionsClick: () -> Unit,
     onReadListsClick: () -> Unit,
@@ -1009,6 +1136,16 @@ private fun LibraryTabChips(
                     colors = chipColors,
                     shape = AppFilterChipDefaults.shape(),
                     border = AppFilterChipDefaults.filterChipBorder(currentTab == SERIES),
+                )
+            }
+            item {
+                FilterChip(
+                    selected = currentTab == AUTHORS,
+                    onClick = onAuthorsClick,
+                    label = { Text("Auteurs") },
+                    colors = chipColors,
+                    shape = AppFilterChipDefaults.shape(),
+                    border = AppFilterChipDefaults.filterChipBorder(currentTab == AUTHORS),
                 )
             }
             item {
@@ -1240,6 +1377,7 @@ private fun LibrarySegmentedButtons(
     genresCount: Int = 0,
     onBrowseClick: () -> Unit,
     onBooksClick: () -> Unit = {},
+    onAuthorsClick: () -> Unit = {},
     onGenreTreeClick: () -> Unit = {},
     onCollectionsClick: () -> Unit,
     onReadListsClick: () -> Unit,
@@ -1278,6 +1416,13 @@ private fun LibrarySegmentedButtons(
                 onClick = onBrowseClick,
                 shape = SegmentedButtonDefaults.itemShape(index = index++, count = tabCount),
                 label = { Text(LocalStrings.current.ui.series) },
+                colors = colors
+            )
+            SegmentedButton(
+                selected = currentTab == AUTHORS,
+                onClick = onAuthorsClick,
+                shape = SegmentedButtonDefaults.itemShape(index = index++, count = tabCount),
+                label = { Text("Auteurs") },
                 colors = colors
             )
             SegmentedButton(
@@ -1326,8 +1471,9 @@ private fun LibrarySegmentedButtons(
 }
 
 private fun getTabCount(collectionsCount: Int, readListsCount: Int, genresCount: Int = 0): Int {
-    // Series, Books, Genres and For you always exist; the rest depend on the content.
-    var count = 4
+    // Books, Series, Authors, Genres and For you always exist; the rest depend
+    // on the content.
+    var count = 5
     if (collectionsCount > 0) count++
     if (readListsCount > 0) count++
     if (genresCount > 0) count++

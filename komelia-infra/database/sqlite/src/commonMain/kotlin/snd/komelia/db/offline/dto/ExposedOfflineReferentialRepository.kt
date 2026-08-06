@@ -197,6 +197,15 @@ class ExposedOfflineReferentialRepository(
         )
     }
 
+    /**
+     * The authors of a library, read from the books rather than from the series
+     * aggregation.
+     *
+     * A book carries its own authors from the moment it is written; the
+     * aggregation is a per-series summary that only becomes true once that
+     * series has been walked in full. Asking the books is both earlier and
+     * exact — the aggregation can only ever repeat what they already say.
+     */
     private suspend fun findAuthorsByName(
         search: String?,
         role: String?,
@@ -204,47 +213,55 @@ class ExposedOfflineReferentialRepository(
         filterBy: FilterBy?
     ): Page<KomgaAuthor> {
         return transaction {
-            val query = bookMetaAggregationAuthorTable
-                .apply {
-                    if (filterBy?.type == FilterByType.LIBRARY) join(
-                        otherTable = seriesTable,
-                        joinType = JoinType.LEFT,
-                        onColumn = bookMetaAggregationAuthorTable.seriesId,
-                        otherColumn = seriesTable.id,
-                    )
-                }
-                .select(bookMetaAggregationAuthorTable.name, bookMetaAggregationAuthorTable.role)
+            // The book row is only needed to know which library or series an
+            // author was found in; without a filter it would be a join paid for
+            // nothing.
+            val source = when (filterBy?.type) {
+                FilterByType.LIBRARY, FilterByType.SERIES -> bookAuthorsTable.join(
+                    otherTable = bookTable,
+                    joinType = JoinType.INNER,
+                    onColumn = bookAuthorsTable.bookId,
+                    otherColumn = bookTable.id,
+                )
+
+                else -> bookAuthorsTable
+            }
+
+            val query = source
+                .select(bookAuthorsTable.name, bookAuthorsTable.role)
                 .withDistinct()
                 .apply {
-                    search?.let { andWhere { bookMetaAggregationAuthorTable.name.containsIgnoreCase(search) } }
+                    search?.let { andWhere { bookAuthorsTable.name.containsIgnoreCase(search) } }
                 }
                 .apply {
-                    role?.let { andWhere { bookMetaAggregationAuthorTable.role.eq(role) } }
+                    role?.let { andWhere { bookAuthorsTable.role.eq(role) } }
                 }
                 .apply {
                     filterBy?.let {
                         when (it.type) {
-                            FilterByType.LIBRARY -> andWhere { seriesTable.libraryId.inList(it.ids) }
+                            FilterByType.LIBRARY -> andWhere { bookTable.libraryId.inList(it.ids) }
+                            FilterByType.SERIES -> andWhere { bookTable.seriesId.inList(it.ids) }
                             FilterByType.COLLECTION -> {}
-                            FilterByType.SERIES -> andWhere { bookMetaAggregationAuthorTable.seriesId.inList(it.ids) }
                             FilterByType.READLIST -> {}
                         }
                     }
                 }
 
             val count = query.count()
-            val sort = bookMetaAggregationAuthorTable.name
 
-            val items = query.orderBy(sort)
+            val items = query.orderBy(bookAuthorsTable.name)
                 .apply {
-                    if (pageRequest.unpaged == true)
+                    // Limit when a page was asked for — the test used to read
+                    // `== true`, so every paged call returned the whole table
+                    // and every unpaged one returned twenty rows.
+                    if (pageRequest.unpaged != true)
                         limit(pageRequest.size ?: 20)
                             .offset(pageRequest.offset())
                 }
                 .map {
                     KomgaAuthor(
-                        it[bookMetaAggregationAuthorTable.name],
-                        it[bookMetaAggregationAuthorTable.role]
+                        it[bookAuthorsTable.name],
+                        it[bookAuthorsTable.role]
                     )
                 }
             page(items, pageRequest, count, true)

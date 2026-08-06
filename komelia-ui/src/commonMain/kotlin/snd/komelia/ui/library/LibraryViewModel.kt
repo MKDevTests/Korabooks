@@ -41,6 +41,7 @@ import snd.komelia.ui.LoadState.Success
 import snd.komelia.ui.LoadState.Uninitialized
 import snd.komelia.ui.common.cards.defaultCardWidth
 import snd.komelia.ui.common.menus.LibraryMenuActions
+import snd.komelia.ui.library.LibraryTab.AUTHORS
 import snd.komelia.ui.library.LibraryTab.BOOKS
 import snd.komelia.ui.library.LibraryTab.GENRE_TREE
 import snd.komelia.ui.library.LibraryTab.COLLECTIONS
@@ -146,6 +147,13 @@ class LibraryViewModel(
         screenModelScope = screenModelScope,
         cardWidth = cardWidth,
     )
+    val authorsTabState = LibraryAuthorsTabState(
+        referentialApi = referentialApi,
+        notifications = appNotifications,
+        libraryId = libraryId,
+        screenModelScope = screenModelScope,
+        cardWidth = cardWidth,
+    )
     val genresTabState = LibraryGenresTabState(
         referentialApi = referentialApi,
         notifications = appNotifications,
@@ -230,6 +238,7 @@ class LibraryViewModel(
             when (currentTab) {
                 SERIES -> seriesTabState.reload()
                 BOOKS -> booksTabState.reload()
+                AUTHORS -> authorsTabState.reload()
                 GENRE_TREE -> genresTabState.reload()
                 COLLECTIONS -> collectionsTabState.reload()
                 READ_LISTS -> readListsTabState.reload()
@@ -440,6 +449,21 @@ class LibraryViewModel(
         currentTab = BOOKS
     }
 
+    fun toAuthorsTab() {
+        currentTab = AUTHORS
+    }
+
+    /**
+     * Shows one author's books.
+     *
+     * The books grid answers this, rather than a screen of its own: the reader
+     * wants the same covers, the same sort and the same pagination, filtered.
+     */
+    fun showAuthor(name: String) {
+        booksTabState.onAuthorFilterChange(name)
+        currentTab = BOOKS
+    }
+
     fun toCollectionsTab() {
         currentTab = COLLECTIONS
     }
@@ -490,6 +514,7 @@ class LibraryViewModel(
 enum class LibraryTab {
     BOOKS,
     SERIES,
+    AUTHORS,
     GENRE_TREE,
     COLLECTIONS,
     READ_LISTS,

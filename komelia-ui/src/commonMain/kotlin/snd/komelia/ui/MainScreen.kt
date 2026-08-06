@@ -681,20 +681,23 @@ class MainScreen(
                 Modifier.hazeEffect(hazeState) { style = hazeStyle }
             else Modifier,
         ) {
-            NavigationBarItem(
-                alwaysShowLabel = true,
-                selected = navigator.lastItem is LibraryScreen,
-                onClick = vm::navigateToLibrary,
-                icon = { Icon(Icons.Rounded.LocalLibrary, null) },
-                label = { Text(LocalStrings.current.navigation.libraries) },
-                colors = itemColors
-            )
+            // Home first: it is where the app opens, and a bar whose first
+            // entry is not the one you land on reads as if you started
+            // somewhere other than the beginning.
             NavigationBarItem(
                 alwaysShowLabel = true,
                 selected = navigator.lastItem is HomeScreen,
                 onClick = { if (navigator.lastItem !is HomeScreen) navigator.replaceAll(HomeScreen()) },
                 icon = { Icon(Icons.Rounded.Home, null) },
                 label = { Text(LocalStrings.current.navigation.home) },
+                colors = itemColors
+            )
+            NavigationBarItem(
+                alwaysShowLabel = true,
+                selected = navigator.lastItem is LibraryScreen,
+                onClick = vm::navigateToLibrary,
+                icon = { Icon(Icons.Rounded.LocalLibrary, null) },
+                label = { Text(LocalStrings.current.navigation.libraries) },
                 colors = itemColors
             )
             NavigationBarItem(

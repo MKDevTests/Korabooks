@@ -224,8 +224,21 @@ class OpdsMirrorWriter(private val repositories: OfflineRepositories) {
                     linksLock = false,
                 )
             )
+            // The mapper already worked out what the shelf's books have in
+            // common; saving an empty row instead threw it away, and every
+            // screen reading a series' authors or tags — the series page, the
+            // author and tag filters — was told the series had none.
             repositories.bookMetadataAggregationRepository.save(
-                OfflineBookMetadataAggregation(seriesId = series.id)
+                OfflineBookMetadataAggregation(
+                    seriesId = series.id,
+                    releaseDate = series.booksMetadata.releaseDate,
+                    summary = series.booksMetadata.summary,
+                    summaryNumber = series.booksMetadata.summaryNumber,
+                    authors = series.booksMetadata.authors,
+                    tags = series.booksMetadata.tags.toSet(),
+                    createdDate = series.booksMetadata.created,
+                    lastModifiedDate = series.booksMetadata.lastModified,
+                )
             )
         }
     }

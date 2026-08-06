@@ -1,14 +1,8 @@
 package snd.komelia.opds
 
 import io.github.oshai.kotlinlogging.KotlinLogging
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
-import snd.komga.client.book.KomgaBookId
 import snd.komga.client.library.KomgaLibraryId
 import snd.komga.client.series.KomgaSeriesId
 
@@ -59,52 +53,35 @@ class OpdsCatalogueSync(
             client.feed(url)
         })
 
-        val shelves = walker.walk(catalogueUrl) {
-            onProgress(OpdsSyncProgress.Walking(it.shelves, it.books, it.current))
-        }
-        logger.info { "OPDS walk found ${shelves.size} shelves in $catalogueUrl" }
-
         val kept = mutableSetOf<KomgaSeriesId>()
         var books = 0
         var covers = 0
 
-        shelves.forEachIndexed { index, shelf ->
+        // Written as they are found, not collected first: twenty thousand books
+        // take an hour to read whatever we do, and a library that appears only
+        // at the end of that hour is a library nobody sees.
+        walker.walk(
+            rootUrl = catalogueUrl,
+            onProgress = { onProgress(OpdsSyncProgress.Walking(it.shelves, it.books, it.current)) },
+        ) { shelf ->
             currentCoroutineContext().ensureActive()
             val mapped = mapper.map(shelf)
-            if (mapped.books.isEmpty()) return@forEachIndexed
+            if (mapped.books.isNotEmpty()) {
+                val coverUrls = shelf.entries.mapNotNull { entry ->
+                    entry.thumbnail?.href?.let { mapper.bookId(entry) to it }
+                }.toMap()
 
-            val fetched = coversOf(shelf, mapper)
-            writer.write(mapped, fetched)
-
-            kept += mapped.series.id
-            books += mapped.books.size
-            covers += fetched.size
-            logger.info { "OPDS wrote '${shelf.title}' (${mapped.books.size} books, ${fetched.size} covers)" }
-            onProgress(OpdsSyncProgress.Writing(index + 1, shelves.size, shelf.title))
+                writer.write(mapped, coverUrls)
+                kept += mapped.series.id
+                books += mapped.books.size
+                covers += coverUrls.size
+                onProgress(OpdsSyncProgress.Writing(kept.size, books, shelf.title))
+            }
         }
 
         writer.prune(libraryId, kept)
+        logger.info { "OPDS sync done: ${kept.size} shelves, $books books" }
         return OpdsSyncResult(libraryId, kept.size, books, covers)
     }
 
-    /**
-     * Six covers at a time.
-     *
-     * One request per book, and a library is hundreds of books: done one after
-     * another this is the slowest part of a sync by a wide margin. Six is
-     * enough to keep the connection busy without turning a home server into a
-     * denial of service against itself.
-     */
-    private suspend fun coversOf(shelf: OpdsShelf, mapper: OpdsMapper): Map<KomgaBookId, ByteArray> =
-        coroutineScope {
-            val gate = Semaphore(6)
-            shelf.entries
-                .mapNotNull { entry -> entry.thumbnail?.href?.let { entry to it } }
-                .map { (entry, href) ->
-                    async { gate.withPermit { client.bytes(href) }?.let { mapper.bookId(entry) to it } }
-                }
-                .awaitAll()
-                .filterNotNull()
-                .toMap()
-        }
 }

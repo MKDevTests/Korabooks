@@ -97,7 +97,7 @@ class OpdsMirrorWriter(private val repositories: OfflineRepositories) {
      * Per shelf rather than per catalogue: a sync interrupted halfway leaves a
      * smaller library, not a broken one.
      */
-    suspend fun write(mapped: MappedShelf, covers: Map<KomgaBookId, ByteArray> = emptyMap()) {
+    suspend fun write(mapped: MappedShelf, covers: Map<KomgaBookId, String> = emptyMap()) {
         repositories.transactionTemplate.execute {
             val series = mapped.series
             repositories.seriesRepository.save(
@@ -155,7 +155,7 @@ class OpdsMirrorWriter(private val repositories: OfflineRepositories) {
                 writeBook(book, covers[book.id])
             }
 
-            covers[mapped.books.firstOrNull()?.id]?.let { bytes ->
+            covers[mapped.books.firstOrNull()?.id]?.let { href ->
                 repositories.thumbnailSeriesRepository.save(
                     OfflineThumbnailSeries(
                         id = KomgaThumbnailId(OpdsMapper.stableId(series.id.value, "cover")),
@@ -163,20 +163,20 @@ class OpdsMirrorWriter(private val repositories: OfflineRepositories) {
                         type = OfflineThumbnailSeries.Type.SIDECAR,
                         selected = true,
                         mediaType = "image/jpeg",
-                        fileSize = bytes.size.toLong(),
+                        fileSize = 0,
                         // Unknown without decoding the image, and nothing reads
                         // them: Coil measures the bitmap it actually loads.
                         width = 0,
                         height = 0,
-                        url = null,
-                        thumbnail = bytes,
+                        url = href,
+                        thumbnail = null,
                     )
                 )
             }
         }
     }
 
-    private suspend fun writeBook(book: KomeliaBook, cover: ByteArray?) {
+    private suspend fun writeBook(book: KomeliaBook, cover: String?) {
         repositories.bookRepository.save(
             OfflineBook(
                 id = book.id,
@@ -217,7 +217,11 @@ class OpdsMirrorWriter(private val repositories: OfflineRepositories) {
                 extension = null,
             )
         )
-        cover?.let { bytes ->
+        // The address, not the image. Twenty thousand covers is twenty thousand
+        // requests, and fetching them during a sync makes the whole library
+        // wait on pictures nobody is looking at yet. The row is written so a
+        // cover can be filled in later, when a screen actually asks for it.
+        cover?.let { href ->
             repositories.thumbnailBookRepository.save(
                 OfflineThumbnailBook(
                     id = KomgaThumbnailId(OpdsMapper.stableId(book.id.value, "cover")),
@@ -225,11 +229,11 @@ class OpdsMirrorWriter(private val repositories: OfflineRepositories) {
                     type = OfflineThumbnailBook.Type.SIDECAR,
                     selected = true,
                     mediaType = "image/jpeg",
-                    fileSize = bytes.size.toLong(),
+                    fileSize = 0,
                     width = 0,
                     height = 0,
-                    url = null,
-                    thumbnail = bytes,
+                    url = href,
+                    thumbnail = null,
                 )
             )
         }

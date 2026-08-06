@@ -1,8 +1,20 @@
 package snd.komelia.opds
 
 import io.github.oshai.kotlinlogging.KotlinLogging
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 
 private val logger = KotlinLogging.logger { }
+
+/**
+ * Requests in flight at once.
+ *
+ * Eight keeps a home server's connection busy through the latency of the last
+ * answer without behaving like a crawler against a machine that also has to
+ * serve the reader's browser.
+ */
+private const val PARALLELISM = 8
 
 /** What the walk has found so far, for a screen that would rather not look frozen. */
 data class OpdsWalkProgress(val shelves: Int, val books: Int, val current: String)
@@ -34,10 +46,31 @@ class OpdsCatalogueWalker(
     private val maxDepth: Int = 4,
 ) {
 
-    suspend fun walk(rootUrl: String, onProgress: (OpdsWalkProgress) -> Unit = {}): List<OpdsShelf> {
+    /** Collects the whole catalogue. Fine for a test, ruinous for a real one. */
+    suspend fun walk(rootUrl: String, onProgress: (OpdsWalkProgress) -> Unit = {}): List<OpdsShelf> =
+        buildList { walk(rootUrl, onProgress) { add(it) } }
+
+    /**
+     * Emits each shelf as it is found.
+     *
+     * Twenty thousand books take an hour to read whatever we do, and a library
+     * that appears only at the end of that hour is a library nobody sees. Handed
+     * over one shelf at a time, it fills as it goes and stopping halfway leaves
+     * something usable.
+     */
+    suspend fun walk(
+        rootUrl: String,
+        onProgress: (OpdsWalkProgress) -> Unit = {},
+        onShelf: suspend (OpdsShelf) -> Unit,
+    ) {
         val root = fetch(rootUrl)
-        val shelves = mutableListOf<OpdsShelf>()
+        var shelfCount = 0
         val claimed = mutableSetOf<String>()
+
+        suspend fun emit(shelf: OpdsShelf) {
+            shelfCount++
+            onShelf(shelf)
+        }
 
         // Reading an index is itself a few hundred requests, and it happens
         // before a single shelf exists to report. Without this the screen sits
@@ -46,7 +79,7 @@ class OpdsCatalogueWalker(
         var visited = 0
         val report: (String) -> Unit = { where ->
             visited++
-            onProgress(OpdsWalkProgress(shelves.size, claimed.size, "$where ($visited)"))
+            onProgress(OpdsWalkProgress(shelfCount, claimed.size, "$where ($visited)"))
         }
 
         // The two recognitions are the whole risk of this class, so they are
@@ -59,17 +92,28 @@ class OpdsCatalogueWalker(
         val seriesIndex = root.entries.firstOrNull { it.leadsTo(SERIES_SEGMENTS, SERIES_WORDS) }?.navigation?.href
         logger.info { "OPDS series index: ${seriesIndex ?: "not recognised"}" }
         if (seriesIndex != null) {
-            for (shelf in navigationEntries(seriesIndex, report = report)) {
-                val href = shelf.navigation?.href ?: continue
-                val books = booksOf(href)
-                if (books.isEmpty()) continue
-                shelves += OpdsShelf(title = shelf.title, entries = books)
-                claimed += books.map { it.id }
-                onProgress(OpdsWalkProgress(shelves.size, claimed.size, shelf.title))
+            // One request per series, and a real library has thousands of them.
+            // Read in batches so the network is busy while the phone parses,
+            // then emitted in order — a shelf list that jumps around as it
+            // fills is worse than one that takes a moment longer.
+            val entries = navigationEntries(seriesIndex, report = report)
+            for (batch in entries.chunked(PARALLELISM)) {
+                val fetched = coroutineScope {
+                    batch.map { shelf ->
+                        val href = shelf.navigation?.href
+                        async { shelf.title to (href?.let { booksOf(it) } ?: emptyList()) }
+                    }.awaitAll()
+                }
+                for ((title, books) in fetched) {
+                    if (books.isEmpty()) continue
+                    claimed += books.map { it.id }
+                    emit(OpdsShelf(title = title, entries = books))
+                    onProgress(OpdsWalkProgress(shelfCount, claimed.size, title))
+                }
             }
         }
 
-        logger.info { "OPDS series walk: ${shelves.size} shelves, ${claimed.size} books" }
+        logger.info { "OPDS series walk: $shelfCount shelves, ${claimed.size} books" }
 
         // An alphabetical index of every book, when the catalogue has one, is
         // both complete and cheap: twenty-six letters where the author index
@@ -85,15 +129,16 @@ class OpdsCatalogueWalker(
             ?: root.entries.mapNotNull { it.navigation?.href }
         logger.info { "OPDS ${bookSources.size} book sources to read" }
 
-        for (source in bookSources) {
-            for (book in booksOf(source)) {
+        for (batch in bookSources.chunked(PARALLELISM)) {
+            val fetched = coroutineScope { batch.map { async { booksOf(it) } }.awaitAll() }
+            for (book in fetched.flatten()) {
                 if (!claimed.add(book.id)) continue
-                shelves += OpdsShelf(title = book.title, entries = listOf(book), standalone = true)
-                onProgress(OpdsWalkProgress(shelves.size, claimed.size, book.title))
+                emit(OpdsShelf(title = book.title, entries = listOf(book), standalone = true))
+                onProgress(OpdsWalkProgress(shelfCount, claimed.size, book.title))
             }
         }
 
-        return shelves
+        logger.info { "OPDS walk done: $shelfCount shelves, ${claimed.size} books" }
     }
 
     /**
@@ -148,6 +193,11 @@ class OpdsCatalogueWalker(
             collected += page
             next = page.nextPage
         }
+        // Bounded, and crudely: a twenty-thousand book catalogue is thousands
+        // of feeds, and holding them all would trade a slow sync for an
+        // out-of-memory kill. The cache only has to survive the few seconds
+        // between classifying a shelf and reading it.
+        if (cache.size >= CACHE_LIMIT) cache.clear()
         cache[url] = collected
         return collected
     }
@@ -175,6 +225,7 @@ class OpdsCatalogueWalker(
     }
 
     companion object {
+        private const val CACHE_LIMIT = 512
         private val ALL_BOOKS_SEGMENTS = listOf("books", "letter", "alphabetical", "title", "titles")
         private val SERIES_SEGMENTS = listOf("series", "serie", "reihen")
         private val AUTHOR_SEGMENTS = listOf("author", "authors", "autor", "auteur")

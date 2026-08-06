@@ -905,6 +905,15 @@ class ViewModelFactory(
         )
     }
 
+    fun getCatalogueStartViewModel(): snd.komelia.ui.startup.CatalogueStartViewModel {
+        return snd.komelia.ui.startup.CatalogueStartViewModel(
+            offlineSettingsRepository = dependencies.offlineDependencies.repositories.offlineSettingsRepository,
+            userRepository = dependencies.offlineDependencies.repositories.userRepository,
+            offlineLibraryApi = dependencies.offlineDependencies.komgaApi.libraryApi,
+            komgaAuthState = dependencies.komgaSharedState,
+        )
+    }
+
     fun getAppServerManagementViewModel(): AppServerManagementViewModel {
         return AppServerManagementViewModel(sessionManager, appRepositories.settingsRepository)
     }

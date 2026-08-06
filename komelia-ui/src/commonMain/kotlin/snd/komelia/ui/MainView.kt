@@ -376,7 +376,10 @@ private fun MainContent(
 ) {
     val loginScreen = remember(platformType) {
         when (platformType) {
-            MOBILE, DESKTOP -> LoginScreen()
+            // Korabooks opens on its own library. There is no server to sign
+            // in to, so the first screen only unlocks the local mirror — see
+            // snd.komelia.ui.startup.CatalogueStartScreen.
+            MOBILE, DESKTOP -> snd.komelia.ui.startup.CatalogueStartScreen()
             WEB_KOMF -> KomfMainScreen()
         }
     }

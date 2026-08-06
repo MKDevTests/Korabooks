@@ -367,7 +367,8 @@ class ExposedOfflineBookDtoRepository(
                 bookMetaTable.columns +
                 mediaTable.columns +
                 readProgressTable.columns +
-                seriesMetaTable.title
+                seriesMetaTable.title +
+                seriesMetaTable.language
 
         return bookTable
             .join(
@@ -509,6 +510,7 @@ class ExposedOfflineBookDtoRepository(
             id = KomgaBookId(this[bookTable.id]),
             seriesId = KomgaSeriesId(this[bookTable.seriesId]),
             seriesTitle = this[seriesMetaTable.title],
+            language = this.getOrNull(seriesMetaTable.language)?.takeIf { it.isNotBlank() },
             libraryId = KomgaLibraryId(this[bookTable.libraryId]),
             name = this[bookTable.name],
             url = this[bookTable.url],

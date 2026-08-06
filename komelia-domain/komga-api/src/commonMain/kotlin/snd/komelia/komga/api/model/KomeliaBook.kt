@@ -35,7 +35,17 @@ data class KomeliaBook(
     // custom fields
     val downloaded: Boolean,
     val localFileLastModified: Instant?,
-    val remoteFileUnavailable: Boolean
+    val remoteFileUnavailable: Boolean,
+
+    /**
+     * The language of the book, when the mirror knows it.
+     *
+     * Komga files language on the series, not the book, so nothing carried it
+     * down to a card until now. A catalogue mirrored from Calibre publishes one
+     * per book, and a library where French and English sit side by side needs
+     * to say which is which without opening anything.
+     */
+    val language: String? = null,
 ) {
     val isLocalFileOutdated = localFileLastModified?.let { it.epochSeconds != fileLastModified.epochSeconds } ?: false
 

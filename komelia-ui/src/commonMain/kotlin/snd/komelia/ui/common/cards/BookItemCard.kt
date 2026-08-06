@@ -183,6 +183,34 @@ fun BookSimpleImageCard(
     )
 }
 
+/**
+ * Two letters, from whatever the catalogue called the language.
+ *
+ * Servers disagree — "fra", "fre", "fr", "fr-FR" all mean the same thing — and
+ * a badge has room for two characters. The three-letter codes that differ from
+ * their two-letter form are listed; everything else is simply truncated, which
+ * is right far more often than it is wrong.
+ */
+private fun languageBadgeLabel(language: String): String {
+    val code = language.trim().lowercase().substringBefore('-').substringBefore('_')
+    val known = mapOf(
+        "fra" to "FR", "fre" to "FR",
+        "eng" to "EN",
+        "deu" to "DE", "ger" to "DE",
+        "spa" to "ES",
+        "ita" to "IT",
+        "nld" to "NL", "dut" to "NL",
+        "por" to "PT",
+        "rus" to "RU",
+        "jpn" to "JA",
+        "zho" to "ZH", "chi" to "ZH",
+        "gla" to "GD",
+        "pol" to "PL",
+        "ara" to "AR",
+    )
+    return known[code] ?: code.take(2).uppercase()
+}
+
 @Composable
 private fun BookImageBadges(
     book: KomeliaBook,
@@ -193,6 +221,18 @@ private fun BookImageBadges(
 
     Column(modifier = Modifier.fillMaxSize()) {
         Row {
+            // The language first, because it is the one badge that answers a
+            // question asked before opening anything: a library holding French
+            // and English side by side is unusable without it.
+            book.language?.let { language ->
+                IndicatorBadge {
+                    Text(
+                        text = languageBadgeLabel(language),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
             if (book.downloaded) {
                 val isOutOfSync = book.isLocalFileOutdated || book.remoteFileUnavailable
                 val neonRed = Color(0xFFFF3131)

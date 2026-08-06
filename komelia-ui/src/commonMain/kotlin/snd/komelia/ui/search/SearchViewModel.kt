@@ -164,6 +164,12 @@ class SearchViewModel(
             currentTab = SearchResultsTab.BOOKS
         } else if (bookResults.isEmpty() && seriesResults.isNotEmpty() && currentTab == SearchResultsTab.BOOKS) {
             currentTab = SearchResultsTab.SERIES
+        } else if (seriesResults.isEmpty() && bookResults.isEmpty() && authorNames.isNotEmpty()) {
+            // Searching an author's name is the one case where titles match
+            // nothing at all. The screen then showed the empty Series tab while
+            // the only chip on offer was Authors — the results were one tap
+            // away and the search read as having found nothing.
+            currentTab = SearchResultsTab.AUTHORS
         }
     }
 

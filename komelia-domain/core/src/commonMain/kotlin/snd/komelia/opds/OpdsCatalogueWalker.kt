@@ -4,6 +4,8 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 private val logger = KotlinLogging.logger { }
 
@@ -16,30 +18,35 @@ private val logger = KotlinLogging.logger { }
  */
 private const val PARALLELISM = 8
 
+/** Pages read from one feed before we decide it is lying about having more. */
+private const val PAGE_LIMIT = 400
+
 /** What the walk has found so far, for a screen that would rather not look frozen. */
 data class OpdsWalkProgress(val shelves: Int, val books: Int, val current: String)
 
 /**
- * Turns a catalogue into a list of shelves, by walking it.
+ * Reads a catalogue whose shape nobody standardised.
  *
- * Two things have to be found in a tree whose shape nobody standardised:
+ * Two things have to be found in it, and they cost wildly different amounts:
  *
- *  - **every book**, which is why the walk goes through the author index: a
- *    book always has an author, "Unknown" if the library says nothing, so that
- *    index is the only one guaranteed to list the whole collection. "Recent"
- *    and "Hot" list a slice, and no server offers a plain "everything".
- *  - **which books form a series**, which is why the series index is walked
- *    first: OPDS has no series field, but a series *shelf* is a feed listing
- *    them in order, and that order is the only book numbering we will ever get.
+ *  - **every book**, from an alphabetical index if the catalogue has one — one
+ *    request per page of sixty — and from the author index otherwise, a book
+ *    always having an author even if the library calls them Unknown. "Recent"
+ *    and "Hot" list a slice and are never the library.
+ *  - **which books form a series**, which OPDS cannot say: it has no series
+ *    field, so membership is only learned by opening every series shelf, one
+ *    request each. That feed's order is also the only book numbering we will
+ *    ever get.
  *
- * Books seen in a series keep it; the rest become one-book shelves.
+ * Hence [walkBooks] and [walkSeries], run in that order and separable: the
+ * first makes a library, the second tidies it.
  *
- * The two indexes are recognised by name, and this is the only place in
- * Korabooks where a server's vocabulary leaks into the code. It degrades on
- * purpose: without a series index every book stands alone, without an author
- * index the walk falls back to whatever acquisition feeds the root offers. A
- * library that shows up flat is a disappointment; one that shows up empty is a
- * bug, and the difference is worth the heuristic.
+ * Indexes are recognised by name, and this is the only place in Korabooks where
+ * a server's vocabulary leaks into the code. It degrades on purpose: without a
+ * series index every book stands alone, without a book index the walk falls
+ * back to whatever feeds the root offers. A library that shows up flat is a
+ * disappointment; one that shows up empty is a bug, and the difference is worth
+ * the heuristic.
  */
 class OpdsCatalogueWalker(
     private val fetch: suspend (String) -> OpdsFeed,
@@ -75,20 +82,32 @@ class OpdsCatalogueWalker(
             ?: root.entries.firstOrNull { it.leadsTo(AUTHOR_SEGMENTS, AUTHOR_WORDS) }?.navigation?.href
         logger.info { "OPDS book index: ${bookIndex ?: "not recognised — falling back to the root feeds"}" }
 
-        val bookSources = bookIndex
-            ?.let { index ->
-                navigationEntries(index, report = report).mapNotNull { entry -> entry.navigation?.href }
-            }
-            ?: root.entries.mapNotNull { it.navigation?.href }
-        logger.info { "OPDS ${bookSources.size} book sources to read" }
+        val branches = bookIndex
+            ?.let { branchesUnder(it, report = report) }
+            ?: root.entries.mapNotNull { entry -> entry.navigation?.href?.let { Branch(entry.title, it, null) } }
+        logger.info { "OPDS ${branches.size} book sources to read" }
 
-        for (batch in bookSources.chunked(PARALLELISM)) {
-            val fetched = coroutineScope { batch.map { async { booksOf(it) } }.awaitAll() }
-            for (book in fetched.flatten()) {
-                if (!seen.add(book.id)) continue
-                shelfCount++
-                onShelf(OpdsShelf(title = book.title, entries = listOf(book), standalone = true))
-                onProgress(OpdsWalkProgress(shelfCount, seen.size, book.title))
+        // Emitted page by page, and pages arrive every sixty books. Collecting
+        // a whole letter first meant nothing appeared for minutes on a letter
+        // holding two thousand books — which is what the first real run did.
+        val lock = Mutex()
+        for (batch in branches.chunked(PARALLELISM)) {
+            coroutineScope {
+                batch.map { branch ->
+                    async {
+                        forEachPage(branch) { page ->
+                            val found = page.entries.filter { it.isBook }
+                            lock.withLock {
+                                for (book in found) {
+                                    if (!seen.add(book.id)) continue
+                                    shelfCount++
+                                    onShelf(OpdsShelf(book.title, listOf(book), standalone = true))
+                                }
+                                onProgress(OpdsWalkProgress(shelfCount, seen.size, branch.title))
+                            }
+                        }
+                    }
+                }.awaitAll()
             }
         }
         logger.info { "OPDS books walk done: ${seen.size} books" }
@@ -119,13 +138,12 @@ class OpdsCatalogueWalker(
         // Read in batches so the network is busy while the phone parses, then
         // emitted in order — a shelf list that jumps around as it fills is
         // worse than one that takes a moment longer.
-        val entries = navigationEntries(seriesIndex, report = report)
-        logger.info { "OPDS ${entries.size} series to read" }
-        for (batch in entries.chunked(PARALLELISM)) {
+        val branches = branchesUnder(seriesIndex, report = report)
+        logger.info { "OPDS ${branches.size} series to read" }
+        for (batch in branches.chunked(PARALLELISM)) {
             val fetched = coroutineScope {
-                batch.map { shelf ->
-                    val href = shelf.navigation?.href
-                    async { shelf.title to (href?.let { booksOf(it) } ?: emptyList()) }
+                batch.map { branch ->
+                    async { branch.title to buildList { forEachPage(branch) { addAll(it.entries.filter { e -> e.isBook }) } } }
                 }.awaitAll()
             }
             for ((title, books) in fetched) {
@@ -158,67 +176,83 @@ class OpdsCatalogueWalker(
     }
 
     /**
-     * Every navigation entry under a feed, descending through the letter
-     * indexes catalogues use to break up long lists.
+     * A shelf of books hanging under an index, with the page that proved it is
+     * one.
      *
-     * A feed that mixes books and sub-shelves stops the descent: it is a shelf
-     * itself, not an index.
+     * Telling a letter from a shelf means looking behind it, and that look
+     * already fetched the answer. Keeping it is the whole difference between
+     * one request per shelf and two — on a catalogue of two thousand series,
+     * two thousand round trips saved.
      */
-    private suspend fun navigationEntries(
+    private data class Branch(val title: String, val href: String, val first: OpdsFeed?)
+
+    /**
+     * The shelves under an index, descending through the letter indexes
+     * catalogues use to break up long lists.
+     *
+     * Only the first page of a candidate is read. Paginating it here is what
+     * made the first real sync look dead: deciding that /opds/books/letter/00
+     * is a shelf walked all two thousand of its books, before a single one had
+     * been handed over.
+     */
+    private suspend fun branchesUnder(
         url: String,
         depth: Int = 0,
         report: (String) -> Unit = {},
-    ): List<OpdsEntry> {
+    ): List<Branch> {
         if (depth >= maxDepth) return emptyList()
-        val entries = pages(url).flatMap { it.entries }
-        if (entries.any { it.isBook }) return entries.filter { !it.isBook }
+        val index = allPages(url)
+        val entries = index.flatMap { it.entries }
+        if (entries.any { it.isBook }) return listOf(Branch(url, url, index.firstOrNull()))
 
-        val direct = mutableListOf<OpdsEntry>()
+        val found = mutableListOf<Branch>()
         for (entry in entries) {
             val href = entry.navigation?.href ?: continue
             report(entry.title)
-            val nested = pages(href).flatMap { page -> page.entries }
-            // A sub-feed of books means this entry is a shelf; a sub-feed of
-            // shelves means it was only a letter, and the shelves are below.
-            if (nested.none { it.isBook } && nested.isNotEmpty()) {
-                direct += navigationEntries(href, depth + 1, report)
+            val peek = runCatching { fetch(href) }.getOrNull() ?: continue
+            // A first page of books means this entry is a shelf; a first page
+            // of shelves means it was only a letter, and the shelves are below.
+            if (peek.entries.any { it.isBook } || peek.entries.isEmpty()) {
+                found += Branch(entry.title, href, peek)
             } else {
-                direct += entry
+                found += branchesUnder(href, depth + 1, report)
             }
         }
-        return direct
+        return found
     }
 
-    private suspend fun booksOf(url: String): List<OpdsEntry> =
-        pages(url).flatMap { page -> page.entries.filter { it.isBook } }
-
     /**
-     * A feed and its continuations, guarding against a page that links to itself.
+     * Every page of a branch, starting from the one already fetched.
      *
-     * Memoised for the length of one walk: deciding whether an entry is a letter
-     * or a shelf means looking behind it, and the walk then goes there again to
-     * read the books. Over a home network that is twice the wait for nothing.
+     * Handed over as they arrive rather than returned as a list: a letter can
+     * hold thousands of books, and the caller wants to show the first sixty
+     * long before the last.
      */
-    private suspend fun pages(url: String, limit: Int = 400): List<OpdsFeed> {
-        cache[url]?.let { return it }
+    private suspend fun forEachPage(branch: Branch, block: suspend (OpdsFeed) -> Unit) {
+        var page = branch.first ?: runCatching { fetch(branch.href) }.getOrNull() ?: return
+        val visited = mutableSetOf(branch.href)
+        var count = 0
+        while (count < PAGE_LIMIT) {
+            block(page)
+            count++
+            val next = page.nextPage ?: return
+            if (!visited.add(next)) return
+            page = runCatching { fetch(next) }.getOrNull() ?: return
+        }
+    }
+
+    /** An index and its continuations, guarding against a page that links to itself. */
+    private suspend fun allPages(url: String): List<OpdsFeed> {
         val collected = mutableListOf<OpdsFeed>()
-        val seen = mutableSetOf<String>()
+        val visited = mutableSetOf<String>()
         var next: String? = url
-        while (next != null && collected.size < limit && seen.add(next)) {
+        while (next != null && collected.size < PAGE_LIMIT && visited.add(next)) {
             val page = runCatching { fetch(next) }.getOrNull() ?: break
             collected += page
             next = page.nextPage
         }
-        // Bounded, and crudely: a twenty-thousand book catalogue is thousands
-        // of feeds, and holding them all would trade a slow sync for an
-        // out-of-memory kill. The cache only has to survive the few seconds
-        // between classifying a shelf and reading it.
-        if (cache.size >= CACHE_LIMIT) cache.clear()
-        cache[url] = collected
         return collected
     }
-
-    private val cache = mutableMapOf<String, List<OpdsFeed>>()
 
     /**
      * Recognises an index by the last segment of its address, and only then by
@@ -241,7 +275,6 @@ class OpdsCatalogueWalker(
     }
 
     companion object {
-        private const val CACHE_LIMIT = 512
         private val ALL_BOOKS_SEGMENTS = listOf("books", "letter", "alphabetical", "title", "titles")
         private val SERIES_SEGMENTS = listOf("series", "serie", "reihen")
         private val AUTHOR_SEGMENTS = listOf("author", "authors", "autor", "auteur")

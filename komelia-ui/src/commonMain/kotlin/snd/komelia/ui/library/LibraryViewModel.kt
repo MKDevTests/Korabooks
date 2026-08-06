@@ -106,7 +106,7 @@ class LibraryViewModel(
     val showContinueReading = settingsRepository.getShowContinueReading()
         .stateIn(screenModelScope, SharingStarted.Eagerly, true)
 
-    var currentTab by mutableStateOf(SERIES)
+    var currentTab by mutableStateOf(BOOKS)
     var collectionsCount by mutableStateOf(0)
         private set
     var readListsCount by mutableStateOf(0)
@@ -455,8 +455,8 @@ class LibraryViewModel(
 }
 
 enum class LibraryTab {
-    SERIES,
     BOOKS,
+    SERIES,
     COLLECTIONS,
     READ_LISTS,
     GENRE,

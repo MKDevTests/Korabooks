@@ -545,6 +545,15 @@ class LibraryScreen(
                             Text(LocalStrings.current.ui.clearAll)
                         }
                     }
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        "${booksTabState.totalBooksCount} livres",
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                    PageSizeSelectionDropdown(
+                        currentSize = booksTabState.pageLoadSize.collectAsState().value,
+                        onPageSizeChange = booksTabState::onPageSizeChange,
+                    )
                 }
                 BookLazyCardGrid(
                     books = booksTabState.books,
@@ -880,6 +889,19 @@ private fun LibraryTabChips(
         // shown too — otherwise a library without collections would offer no way
         // back from the suggestions.
         run {
+            // Always offered: a catalogue mirrored from Calibre-Web is mostly
+            // standalone books, and the series view answers for them with
+            // thousands of one-book shelves.
+            item {
+                FilterChip(
+                    selected = currentTab == BOOKS,
+                    onClick = onBooksClick,
+                    label = { Text("Livres") },
+                    colors = chipColors,
+                    shape = AppFilterChipDefaults.shape(),
+                    border = AppFilterChipDefaults.filterChipBorder(currentTab == BOOKS),
+                )
+            }
             item {
                 FilterChip(
                     selected = currentTab == SERIES,
@@ -888,19 +910,6 @@ private fun LibraryTabChips(
                     colors = chipColors,
                     shape = AppFilterChipDefaults.shape(),
                     border = AppFilterChipDefaults.filterChipBorder(currentTab == SERIES),
-                )
-            }
-            // Always offered: a catalogue mirrored from Calibre-Web is mostly
-            // standalone books, and the series view answers for them with
-            // thousands of one-book shelves.
-            item {
-                FilterChip(
-                    selected = currentTab == BOOKS,
-                    onClick = onBooksClick,
-                    label = { Text(LocalStrings.current.ui.books) },
-                    colors = chipColors,
-                    shape = AppFilterChipDefaults.shape(),
-                    border = AppFilterChipDefaults.filterChipBorder(currentTab == BOOKS),
                 )
             }
             if (collectionsCount > 0) {
@@ -1104,18 +1113,18 @@ private fun LibrarySegmentedButtons(
                 .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
             SegmentedButton(
-                selected = currentTab == SERIES,
-                onClick = onBrowseClick,
+                selected = currentTab == BOOKS,
+                onClick = onBooksClick,
                 shape = SegmentedButtonDefaults.itemShape(index = 0, count = tabCount),
-                label = { Text(LocalStrings.current.ui.series) },
+                label = { Text("Livres") },
                 colors = colors
             )
             var index = 1
             SegmentedButton(
-                selected = currentTab == BOOKS,
-                onClick = onBooksClick,
+                selected = currentTab == SERIES,
+                onClick = onBrowseClick,
                 shape = SegmentedButtonDefaults.itemShape(index = index++, count = tabCount),
-                label = { Text(LocalStrings.current.ui.books) },
+                label = { Text(LocalStrings.current.ui.series) },
                 colors = colors
             )
             if (collectionsCount > 0) {

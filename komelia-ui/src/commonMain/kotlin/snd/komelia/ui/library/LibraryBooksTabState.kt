@@ -28,6 +28,9 @@ import snd.komga.client.common.KomgaSort
 import snd.komga.client.library.KomgaLibraryId
 import snd.komga.client.search.allOfBooks
 import snd.komga.client.sse.KomgaEvent
+import io.github.oshai.kotlinlogging.KotlinLogging
+
+private val logger = KotlinLogging.logger { }
 
 /**
  * Every book of a library, series or not.
@@ -159,9 +162,17 @@ class LibraryBooksTabState(
                     pageIndex = page - 1,
                     size = pageLoadSize.value,
                     sort = sortOrder.sort,
+                    // Explicit, because the offline repository only applies a
+                    // LIMIT when it reads exactly false here — a null would
+                    // silently fetch the whole library as one page.
+                    unpaged = false,
                 ),
             )
 
+            logger.info {
+                "books tab: page $page of ${response.totalPages}, " +
+                    "${response.content.size} of ${response.totalElements} books"
+            }
             books = response.content
             totalBooksCount = response.totalElements.toInt()
             totalBooksPages = response.totalPages

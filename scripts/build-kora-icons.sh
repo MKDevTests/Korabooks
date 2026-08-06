@@ -1,5 +1,10 @@
 #!/bin/bash
-# Regenerate Android launcher icons from scripts/kora-icon-source.png.
+# Regenerate Android launcher icons from scripts/korabooks-icon-source.png.
+#
+# The source is Kora's own icon with an open book added at the bottom right,
+# drawn in the same language as the letter: white paper plane, blue-violet
+# underside. Kept as a flattened PNG rather than composited here so the script
+# stays a resizer — scripts/book-badge.svg is the badge it was built from.
 # Requires ImageMagick (`magick` in PATH or under /c/Program Files/ImageMagick-*).
 
 set -e
@@ -7,7 +12,7 @@ set -e
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
 
-SRC="scripts/kora-icon-source.png"
+SRC="scripts/korabooks-icon-source.png"
 RES="komelia-app/src/androidMain/res"
 
 [[ -f "$SRC" ]] || { echo "Source $SRC not found"; exit 1; }

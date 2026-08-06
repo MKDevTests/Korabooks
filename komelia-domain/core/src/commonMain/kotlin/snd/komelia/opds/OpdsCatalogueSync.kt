@@ -3,10 +3,19 @@ package snd.komelia.opds
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import snd.komga.client.book.KomgaBookId
 import snd.komga.client.library.KomgaLibraryId
 import snd.komga.client.series.KomgaSeriesId
 
 private val logger = KotlinLogging.logger { }
+
+/**
+ * Shelves per transaction.
+ *
+ * Big enough that the transaction stops being the cost, small enough that
+ * stopping a sync loses a second of work rather than a minute of it.
+ */
+private const val BATCH = 100
 
 data class OpdsSyncResult(
     val libraryId: KomgaLibraryId,
@@ -60,19 +69,22 @@ class OpdsCatalogueSync(
         var books = 0
         var covers = 0
 
-        suspend fun write(shelf: OpdsShelf, phase: (Int, String) -> OpdsSyncProgress) {
-            currentCoroutineContext().ensureActive()
-            val mapped = mapper.map(shelf)
-            if (mapped.books.isEmpty()) return
-            val coverUrls = shelf.entries.mapNotNull { entry ->
-                entry.thumbnail?.href?.let { mapper.bookId(entry) to it }
-            }.toMap()
+        // Buffered, because a transaction costs far more than the seven inserts
+        // a shelf needs. One at a time the phone wrote twenty-five books a
+        // minute while the network delivered twelve hundred.
+        val pending = mutableListOf<MappedShelf>()
+        val pendingCovers = mutableMapOf<KomgaBookId, String>()
 
-            writer.write(mapped, coverUrls)
-            kept += mapped.series.id
-            books += mapped.books.size
-            covers += coverUrls.size
-            onProgress(phase(books, shelf.title))
+        suspend fun flush(title: String) {
+            if (pending.isEmpty()) return
+            currentCoroutineContext().ensureActive()
+            writer.write(pending, pendingCovers)
+            kept += pending.map { it.series.id }
+            books += pending.sumOf { it.books.size }
+            covers += pendingCovers.size
+            pending.clear()
+            pendingCovers.clear()
+            onProgress(OpdsSyncProgress.Writing(books, books, title))
         }
 
         // Books first, and each one on its own shelf. This is the half that
@@ -81,7 +93,17 @@ class OpdsCatalogueSync(
         walker.walkBooks(
             rootUrl = catalogueUrl,
             onProgress = { onProgress(OpdsSyncProgress.Walking(it.shelves, it.books, it.current)) },
-        ) { shelf -> write(shelf) { count, title -> OpdsSyncProgress.Writing(count, count, title) } }
+        ) { shelf ->
+            val mapped = mapper.map(shelf)
+            if (mapped.books.isNotEmpty()) {
+                pending += mapped
+                shelf.entries.forEach { entry ->
+                    entry.thumbnail?.href?.let { pendingCovers[mapper.bookId(entry)] = it }
+                }
+                if (pending.size >= BATCH) flush(shelf.title)
+            }
+        }
+        flush("")
 
         // Series afterwards, and this is the slow half: one request per series,
         // thousands of them. Each shelf regroups books that are already in the
@@ -94,11 +116,20 @@ class OpdsCatalogueSync(
         ) { shelf ->
             val mapped = mapper.map(shelf)
             if (mapped.books.isNotEmpty()) {
-                currentCoroutineContext().ensureActive()
-                writer.write(mapped, emptyMap())
-                kept += mapped.series.id
-                onProgress(OpdsSyncProgress.Grouping(kept.size, books, shelf.title))
+                pending += mapped
+                if (pending.size >= BATCH) {
+                    currentCoroutineContext().ensureActive()
+                    writer.write(pending, emptyMap())
+                    kept += pending.map { it.series.id }
+                    pending.clear()
+                    onProgress(OpdsSyncProgress.Grouping(kept.size, books, shelf.title))
+                }
             }
+        }
+        if (pending.isNotEmpty()) {
+            writer.write(pending, emptyMap())
+            kept += pending.map { it.series.id }
+            pending.clear()
         }
 
         writer.prune(libraryId, kept)

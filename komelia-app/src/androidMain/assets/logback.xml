@@ -44,6 +44,13 @@
         <appender-ref ref="file" />
     </appender>
 
+    <!-- Exposed logs the full text of every statement it runs. Mirroring a
+         catalogue is a hundred and forty thousand of them, each one a string
+         built, formatted and pushed to logcat before the insert it describes
+         even happens. On a debug build that logging costs more than the writes
+         it narrates. A failing statement still speaks, at WARN. -->
+    <logger name="Exposed" level="WARN" />
+
     <root level="${LOG_LEVEL:-INFO}">
         <appender-ref ref="logcat" />
         <appender-ref ref="asyncFile" />

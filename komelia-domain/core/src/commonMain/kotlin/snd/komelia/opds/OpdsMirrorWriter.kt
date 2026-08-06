@@ -92,14 +92,30 @@ class OpdsMirrorWriter(private val repositories: OfflineRepositories) {
     }
 
     /**
-     * One shelf and its books, in a single transaction.
+     * Many shelves, one transaction.
      *
-     * Per shelf rather than per catalogue: a sync interrupted halfway leaves a
-     * smaller library, not a broken one.
+     * A shelf costs seven inserts — series, its metadata, its aggregation, then
+     * the book, its metadata, its media, its cover — and a transaction of its
+     * own costs far more than the seven. Written one at a time a phone managed
+     * twenty-five books a minute while the network was delivering twelve
+     * hundred; batched, the writing stops being the thing you wait for.
+     *
+     * Still batches rather than one transaction for the catalogue: an
+     * interrupted sync should leave a smaller library, never a broken one.
      */
-    suspend fun write(mapped: MappedShelf, covers: Map<KomgaBookId, String> = emptyMap()) {
+    suspend fun write(batch: List<MappedShelf>, covers: Map<KomgaBookId, String> = emptyMap()) {
+        if (batch.isEmpty()) return
         repositories.transactionTemplate.execute {
-            val series = mapped.series
+            for (mapped in batch) writeShelf(mapped, covers)
+        }
+    }
+
+    suspend fun write(mapped: MappedShelf, covers: Map<KomgaBookId, String> = emptyMap()) =
+        write(listOf(mapped), covers)
+
+    private suspend fun writeShelf(mapped: MappedShelf, covers: Map<KomgaBookId, String>) {
+        val series = mapped.series
+        run {
             repositories.seriesRepository.save(
                 OfflineSeries(
                     id = series.id,

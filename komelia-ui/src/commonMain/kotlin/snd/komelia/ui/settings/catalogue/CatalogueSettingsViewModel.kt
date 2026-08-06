@@ -27,7 +27,15 @@ class CatalogueSettingsViewModel(
     private val catalogue: OpdsCatalogueService,
 ) : ScreenModel {
 
-    var url by mutableStateOf("")
+    /**
+     * Pre-filled with the shape of the answer, not with a guess.
+     *
+     * Nobody's Calibre-Web is on localhost from a phone, so this is never right
+     * — it is there to be edited, and editing an address is quicker than
+     * writing one from nothing when the port and the /opds suffix are the parts
+     * people get wrong.
+     */
+    var url by mutableStateOf(DEFAULT_URL)
         private set
     var username by mutableStateOf("")
         private set
@@ -137,5 +145,9 @@ class CatalogueSettingsViewModel(
                 busy = false
             }
         }
+    }
+
+    private companion object {
+        const val DEFAULT_URL = "http://localhost:8083/opds"
     }
 }

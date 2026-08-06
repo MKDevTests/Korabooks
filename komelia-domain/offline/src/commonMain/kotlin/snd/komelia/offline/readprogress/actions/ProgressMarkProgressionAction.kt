@@ -60,7 +60,28 @@ class ProgressMarkProgressionAction(
 
 
                     val extension = media.extension
-                    check(extension is MediaExtensionEpub) { "Epub extension not found" }
+                    // A mirrored catalogue has no positions to match against:
+                    // they are computed by Komga when it analyses a file, and a
+                    // book that came from an OPDS feed was never analysed by
+                    // anything. Refusing to record progress there means a reader
+                    // that silently forgets its page — so the locator the reader
+                    // just gave us is taken at face value.
+                    if (extension !is MediaExtensionEpub || extension.positions.isEmpty()) {
+                        val progression = newProgression.locator.locations?.totalProgression
+                            ?: newProgression.locator.locations?.progression
+                        return@execute readProgressRepository.save(
+                            OfflineReadProgress(
+                                bookId = bookId,
+                                userId = userId,
+                                page = progression?.let { (media.pageCount * it).roundToInt() } ?: 0,
+                                completed = (progression ?: 0f) >= 0.99f,
+                                readDate = newProgression.modified,
+                                deviceId = newProgression.device.id,
+                                deviceName = newProgression.device.name,
+                                locator = newProgression.locator,
+                            )
+                        )
+                    }
                     // match progression with positions
                     val matchingPositions = extension.positions.filter { it.href == href }
                     val matchedPosition =

@@ -230,6 +230,7 @@ abstract class OfflineModule(
                 fileContentExtractors = fileService,
                 offlineUserId = offlineUserId,
                 coverLoader = coverLoader,
+                catalogueDownloader = catalogueDownloader,
             ),
             collectionsApi = OfflineCollectionsApi(),
             fileSystemApi = OfflineFileSystemApi(),

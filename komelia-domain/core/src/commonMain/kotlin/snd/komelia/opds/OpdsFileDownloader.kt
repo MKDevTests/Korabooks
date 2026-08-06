@@ -8,6 +8,7 @@ import snd.komelia.offline.sync.CatalogueFileDownloader
 import snd.komelia.settings.CommonSettingsRepository
 import snd.komelia.settings.SecretsRepository
 import kotlinx.io.Sink
+import kotlinx.io.readByteArray
 
 /**
  * Pours a book from the catalogue into a file, without holding it in memory.
@@ -38,6 +39,18 @@ class OpdsFileDownloader(
                 onProgress(channel.totalBytesRead, total)
             }
             sink.flush()
+        }
+    }
+
+    override suspend fun stream(url: String, onChunk: suspend (ByteArray) -> Unit) {
+        val config = credentials.current()
+        OpdsClient(ktor, config?.credentials).download(url) { response ->
+            val channel = response.bodyAsChannel()
+            while (!channel.isClosedForRead) {
+                val packet = channel.readRemaining(DEFAULT_BUFFER_SIZE.toLong())
+                if (packet.exhausted()) break
+                onChunk(packet.readByteArray())
+            }
         }
     }
 }

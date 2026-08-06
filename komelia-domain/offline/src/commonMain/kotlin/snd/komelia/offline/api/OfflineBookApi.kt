@@ -15,6 +15,8 @@ import snd.komelia.offline.book.actions.BookMetadataUpdateAction
 import snd.komelia.offline.book.actions.BookThumbnailDeleteAction
 import snd.komelia.offline.book.actions.BookThumbnailSelectAction
 import snd.komelia.offline.book.actions.BookThumbnailUploadAction
+import snd.komelia.offline.book.model.OfflineBook
+import snd.komelia.offline.sync.CatalogueFileDownloader
 import snd.komelia.offline.book.model.OfflineThumbnailBook
 import snd.komelia.offline.book.repository.OfflineBookRepository
 import snd.komelia.offline.book.repository.OfflineThumbnailBookRepository
@@ -70,7 +72,26 @@ class OfflineBookApi(
      * a grid asks for it.
      */
     private val coverLoader: (suspend (String) -> ByteArray?)? = null,
+
+    /**
+     * Reads a book that was mirrored but never downloaded.
+     *
+     * Opening one used to fail with a file-not-found on an empty path, which is
+     * what a reader gets when it is handed a row describing a file nobody
+     * fetched. Streaming straight from the catalogue means a book opens on the
+     * first tap; downloading it explicitly is still what makes it stay.
+     */
+    private val catalogueDownloader: CatalogueFileDownloader? = null,
 ) : KomgaBookApi {
+
+    /**
+     * A downloaded book is one with a local modification date.
+     *
+     * The mirror writes zero there and an empty path beside it — the path alone
+     * cannot be trusted to say whether anything is on disk.
+     */
+    private val OfflineBook.hasLocalCopy: Boolean
+        get() = localFileLastModified.epochSeconds > 0
 
     private val userId
         get() = offlineUserId.value
@@ -339,11 +360,24 @@ class OfflineBookApi(
 
     override suspend fun getBookRawFile(bookId: KomgaBookId): ByteArray {
         val book = bookRepository.get(bookId)
-        return book.fileDownloadPath.readBytes()
+        if (book.hasLocalCopy) return book.fileDownloadPath.readBytes()
+
+        val downloader = catalogueDownloader ?: return book.fileDownloadPath.readBytes()
+        val chunks = mutableListOf<ByteArray>()
+        downloader.stream(book.url) { chunks.add(it) }
+        val size = chunks.sumOf { it.size }
+        val out = ByteArray(size)
+        var offset = 0
+        chunks.forEach { it.copyInto(out, offset); offset += it.size }
+        return out
     }
 
     override suspend fun downloadBookRawFile(bookId: KomgaBookId, onChunk: suspend (ByteArray) -> Unit) {
         val book = bookRepository.get(bookId)
+        if (!book.hasLocalCopy && catalogueDownloader != null) {
+            catalogueDownloader.stream(book.url, onChunk)
+            return
+        }
         book.fileDownloadPath.readChunked(64 * 1024, onChunk)
     }
 
@@ -353,11 +387,14 @@ class OfflineBookApi(
 
     override suspend fun getBookLocalFilePath(bookId: KomgaBookId): String? {
         return runCatching {
-            bookRepository.get(bookId).fileDownloadPath.localFilePath()
+            val book = bookRepository.get(bookId)
+            if (!book.hasLocalCopy) null
+            else book.fileDownloadPath.localFilePath()?.takeIf { it.isNotBlank() }
         }.getOrNull()
     }
 
-    override suspend fun hasLocalFile(bookId: KomgaBookId): Boolean = true
+    override suspend fun hasLocalFile(bookId: KomgaBookId): Boolean =
+        runCatching { bookRepository.get(bookId).hasLocalCopy }.getOrDefault(false)
 
     private fun OfflineThumbnailBook.toKomgaBookThumbnail() = KomgaBookThumbnail(
         id = this.id,

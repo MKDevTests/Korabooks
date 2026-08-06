@@ -264,32 +264,41 @@ class OpdsMirrorWriter(private val repositories: OfflineRepositories) {
      * more than one reason, and only the count knows.
      */
     suspend fun pruneEmptySeries(libraryId: KomgaLibraryId): Int {
-        val all = repositories.seriesRepository.findAllByLibraryId(libraryId).map { it.id }
-        if (all.isEmpty()) return 0
-        val withBooks = mutableSetOf<KomgaSeriesId>()
-        all.chunked(IDS_PER_QUERY).forEach { slice ->
-            repositories.bookRepository.findAllBySeriesIds(slice)
-                .mapTo(withBooks) { it.seriesId }
-        }
-        val empty = all.filterNot { it in withBooks }
+        val empty = emptySeriesOf(libraryId)
         if (empty.isEmpty()) return 0
         deleteSeries(empty)
         return empty.size
     }
 
     /**
-     * Drops the shelves the catalogue no longer offers.
+     * Drops the shelves the catalogue no longer offers — the empty ones.
      *
-     * Deliberately narrow: it removes series, never books inside a kept series,
-     * because a book missing from one sync is more often a server hiccup than a
-     * deletion, and losing a downloaded file to a hiccup is unforgivable.
+     * Emptiness is not a detail of the rule, it is the rule: a book row holds a
+     * foreign key to its series, and deleting a shelf that still contains books
+     * fails the constraint and takes the end of a twenty-minute sync with it.
+     *
+     * Deliberately narrow beyond that: it removes shelves, never the books
+     * inside them, because a book missing from one sync is far more often a
+     * server hiccup than a deletion — and losing a downloaded file to a hiccup
+     * is unforgivable. A shelf that outlives its catalogue entry but still
+     * holds books simply stays, and the next sync re-parents them.
      */
     suspend fun prune(libraryId: KomgaLibraryId, kept: Set<KomgaSeriesId>) {
-        val stale = repositories.seriesRepository.findAllByLibraryId(libraryId)
-            .map { it.id }
-            .filterNot { it in kept }
+        val stale = emptySeriesOf(libraryId).filterNot { it in kept }
         if (stale.isEmpty()) return
         deleteSeries(stale)
+    }
+
+    /** Shelves of [libraryId] that hold no book at all. */
+    private suspend fun emptySeriesOf(libraryId: KomgaLibraryId): List<KomgaSeriesId> {
+        val all = repositories.seriesRepository.findAllByLibraryId(libraryId).map { it.id }
+        if (all.isEmpty()) return emptyList()
+        val withBooks = mutableSetOf<KomgaSeriesId>()
+        all.chunked(IDS_PER_QUERY).forEach { slice ->
+            repositories.bookRepository.findAllBySeriesIds(slice)
+                .mapTo(withBooks) { it.seriesId }
+        }
+        return all.filterNot { it in withBooks }
     }
 
     /**

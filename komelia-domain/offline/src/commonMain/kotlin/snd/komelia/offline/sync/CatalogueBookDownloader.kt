@@ -24,8 +24,12 @@ private val logger = KotlinLogging.logger { }
  * and should not: it knows a book row holds an address, and that somebody able
  * to reach that address will write the bytes into the sink it opened.
  */
-fun interface CatalogueFileDownloader {
+interface CatalogueFileDownloader {
+    /** Writes the whole file into [sink]. Used when keeping it. */
     suspend fun download(url: String, sink: Sink, onProgress: (read: Long, total: Long) -> Unit)
+
+    /** Hands the file over chunk by chunk. Used when reading it once. */
+    suspend fun stream(url: String, onChunk: suspend (ByteArray) -> Unit)
 }
 
 /**

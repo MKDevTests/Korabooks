@@ -5,7 +5,9 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 
 private val logger = KotlinLogging.logger { }
 
@@ -28,6 +30,15 @@ private const val PARALLELISM = 16
 
 /** Pages read from one feed before we decide it is lying about having more. */
 private const val PAGE_LIMIT = 400
+
+/**
+ * Index entries peeked before the results are consumed and released.
+ *
+ * Only a memory bound: every page in a slice is held until the slice ends, and
+ * a catalogue can list thousands of series under one index. Large enough that
+ * the pause between slices costs nothing next to the slice itself.
+ */
+private const val PEEK_SLICE = 256
 
 /** What the walk has found so far, for a screen that would rather not look frozen. */
 data class OpdsWalkProgress(val shelves: Int, val books: Int, val current: String)
@@ -98,11 +109,15 @@ class OpdsCatalogueWalker(
         // Emitted page by page, and pages arrive every sixty books. Collecting
         // a whole letter first meant nothing appeared for minutes on a letter
         // holding two thousand books — which is what the first real run did.
+        // A permit each, not a batch of sixteen: letters are wildly uneven, and
+        // waiting for a whole batch meant the fourteen pages of "L" held the
+        // other fifteen slots empty while they finished.
         val lock = Mutex()
-        for (batch in branches.chunked(PARALLELISM)) {
-            coroutineScope {
-                batch.map { branch ->
-                    async {
+        val gate = Semaphore(PARALLELISM)
+        coroutineScope {
+            branches.map { branch ->
+                async {
+                    gate.withPermit {
                         forEachPage(branch) { page ->
                             val found = page.entries.filter { it.isBook }
                             lock.withLock {
@@ -115,8 +130,8 @@ class OpdsCatalogueWalker(
                             }
                         }
                     }
-                }.awaitAll()
-            }
+                }
+            }.awaitAll()
         }
         logger.info { "OPDS books walk done: ${seen.size} books" }
     }
@@ -253,17 +268,47 @@ class OpdsCatalogueWalker(
         val entries = index.flatMap { it.entries }
         if (entries.any { it.isBook }) return listOf(Branch(url, url, index.firstOrNull()))
 
+        // The peeks run together, and this is the whole cost of a sync.
+        //
+        // Sequentially, a catalogue of two thousand eight hundred series was
+        // two thousand eight hundred round trips taken one at a time: measured
+        // on a real library, one request a second for forty-five minutes, with
+        // the connection idle nearly half of it. The parallelism below used to
+        // live in walkSeries, which by then had every page already in hand and
+        // fetched nothing — the fast phase was the parallel one.
+        //
+        // A permit rather than a batch: batching sixteen and waiting for all
+        // sixteen leaves the slowest answer holding the other fifteen slots.
+        // Sliced only to bound memory, since every peeked page is kept until
+        // the slice is done.
         val found = mutableListOf<Branch>()
-        for (entry in entries) {
-            val href = entry.navigation?.href ?: continue
-            report(entry.title)
-            val peek = runCatching { fetch(href) }.getOrNull() ?: continue
-            // A first page of books means this entry is a shelf; a first page
-            // of shelves means it was only a letter, and the shelves are below.
-            if (peek.entries.any { it.isBook } || peek.entries.isEmpty()) {
-                found += Branch(entry.title, href, peek)
-            } else {
-                found += branchesUnder(href, depth + 1, report)
+        val gate = Semaphore(PARALLELISM)
+        for (slice in entries.chunked(PEEK_SLICE)) {
+            val peeked = coroutineScope {
+                slice.map { entry ->
+                    async {
+                        val href = entry.navigation?.href
+                        val page = href?.let {
+                            gate.withPermit {
+                                report(entry.title)
+                                runCatching { fetch(it) }.getOrNull()
+                            }
+                        }
+                        Triple(entry, href, page)
+                    }
+                }.awaitAll()
+            }
+
+            for ((entry, href, peek) in peeked) {
+                if (href == null || peek == null) continue
+                // A first page of books means this entry is a shelf; a first
+                // page of shelves means it was only a letter, and the shelves
+                // are below.
+                if (peek.entries.any { it.isBook } || peek.entries.isEmpty()) {
+                    found += Branch(entry.title, href, peek)
+                } else {
+                    found += branchesUnder(href, depth + 1, report)
+                }
             }
         }
         return found

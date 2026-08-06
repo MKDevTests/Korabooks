@@ -145,14 +145,37 @@ android {
     packaging {
         jniLibs {
             pickFirsts += "lib/*/libc++_shared.so"
-            pickFirsts += "lib/*/libonnxruntime.so"
             pickFirsts += "**/libdatastore_shared_counter.so"
+
+            // Korabooks reads books, so nothing here has a caller: OCR is for
+            // scanned speech balloons and the upscaler is for comic pages.
+            // Sixty-four megabytes of native code for features a Calibre
+            // library cannot use.
+            //
+            // Excluded rather than unwired because the code that would have to
+            // go spans sixty-seven files, and the app is already built to
+            // survive their absence — createOnnxRuntime() returns null, the
+            // models are downloaded rather than bundled, and every loader sits
+            // behind a runCatching. Their real removal belongs to the pass that
+            // reworks the reader, not to a packaging change.
+            excludes += "**/libonnxruntime*.so"
+            excludes += "**/libkomelia_onnxruntime*.so"
+            excludes += "**/libncnn*.so"
+            excludes += "**/libopencv_java4.so"
+            excludes += "**/libmlkit*.so"
+            excludes += "**/libwhisper*.so"
         }
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1,README.txt}"
             excludes += "**/*.onnx"
             pickFirsts += "/META-INF/versions/9/OSGI-INF/MANIFEST.MF"
         }
+    }
+    androidResources {
+        // The OCR weight files ride in as *assets* of the RapidOCR and ML Kit
+        // AARs, which is why the `resources` exclude above never caught them.
+        // Seventeen megabytes of Chinese text-recognition models.
+        ignoreAssetsPatterns += listOf("*.onnx")
     }
     dependenciesInfo {
         if (androidVariant != AndroidVariant.PLAY) {

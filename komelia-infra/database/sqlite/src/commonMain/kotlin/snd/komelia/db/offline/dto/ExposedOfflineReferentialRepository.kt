@@ -334,9 +334,26 @@ class ExposedOfflineReferentialRepository(
         val ids: Set<String>,
     )
 
+    /**
+     * Genres of series that still exist — the join is the point.
+     *
+     * Reading the genre table alone returns every genre ever written into it,
+     * including rows whose series was deleted by a path that missed them and
+     * rows left by libraries that are long gone. They cannot be reached from
+     * anywhere in the app, they cannot be removed by re-syncing, and they sit
+     * in the genre list forever. An inner join answers the question actually
+     * being asked: which genres does this library have *now*.
+     */
     override suspend fun findAllGenres(): List<String> {
         return transaction {
-            seriesMetaGenresTable.select(seriesMetaGenresTable.genre)
+            seriesMetaGenresTable
+                .join(
+                    otherTable = seriesTable,
+                    joinType = JoinType.INNER,
+                    onColumn = seriesMetaGenresTable.seriesId,
+                    otherColumn = seriesTable.id,
+                )
+                .select(seriesMetaGenresTable.genre)
                 .withDistinct()
                 .orderBy(seriesMetaGenresTable.genre)
                 .map { it[seriesMetaGenresTable.genre] }
@@ -371,8 +388,15 @@ class ExposedOfflineReferentialRepository(
             val seriesTagAlias = seriesMetaTagTable.tag.alias("tag")
 
             bookMetaTagTable
+                .join(bookTable, JoinType.INNER, bookMetaTagTable.bookId, bookTable.id)
                 .select(bookTagAlias)
-                .union(seriesMetaTagTable.select(seriesTagAlias))
+                .withDistinct()
+                .union(
+                    seriesMetaTagTable
+                        .join(seriesTable, JoinType.INNER, seriesMetaTagTable.seriesId, seriesTable.id)
+                        .select(seriesTagAlias)
+                        .withDistinct()
+                )
                 .map { it[bookTagAlias] }
                 .sortedBy { it.lowercase() }
         }
@@ -391,6 +415,7 @@ class ExposedOfflineReferentialRepository(
                     otherColumn = bookTable.id,
                 )
                 .select(bookTagAlias)
+                .withDistinct()
                 .where { bookTable.libraryId.inList(libraryIds.map { it.value }) }
                 .union(
                     seriesMetaTagTable
@@ -401,6 +426,7 @@ class ExposedOfflineReferentialRepository(
                             otherColumn = seriesTable.id,
                         )
                         .select(seriesTagAlias)
+                        .withDistinct()
                         .where { seriesTable.libraryId.inList(libraryIds.map { it.value }) }
                 )
                 .map { it[bookTagAlias] }
@@ -416,7 +442,9 @@ class ExposedOfflineReferentialRepository(
     override suspend fun findAllSeriesTags(): List<String> {
         return transaction {
             seriesMetaTagTable
+                .join(seriesTable, JoinType.INNER, seriesMetaTagTable.seriesId, seriesTable.id)
                 .select(seriesMetaTagTable.tag)
+                .withDistinct()
                 .orderBy(seriesMetaTagTable.tag)
                 .map { it[seriesMetaTagTable.tag] }
         }
@@ -432,6 +460,7 @@ class ExposedOfflineReferentialRepository(
                     otherColumn = seriesTable.id,
                 )
                 .select(seriesMetaTagTable.tag)
+                .withDistinct()
                 .where { seriesTable.libraryId.eq(libraryId.value) }
                 .orderBy(seriesMetaTagTable.tag)
                 .map { it[seriesMetaTagTable.tag] }
@@ -446,7 +475,9 @@ class ExposedOfflineReferentialRepository(
     override suspend fun findAllBookTags(): List<String> {
         return transaction {
             bookMetaTagTable
+                .join(bookTable, JoinType.INNER, bookMetaTagTable.bookId, bookTable.id)
                 .select(bookMetaTagTable.tag)
+                .withDistinct()
                 .orderBy(bookMetaTagTable.tag)
                 .map { it[bookMetaTagTable.tag] }
         }
@@ -462,6 +493,7 @@ class ExposedOfflineReferentialRepository(
                     otherColumn = bookTable.id,
                 )
                 .select(bookMetaTagTable.tag)
+                .withDistinct()
                 .where { bookTable.seriesId.eq(seriesId.value) }
                 .orderBy(bookMetaTagTable.tag)
                 .map { it[bookMetaTagTable.tag] }

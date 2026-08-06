@@ -116,19 +116,29 @@ class ExposedSeriesDtoRepository(
         )
     }
 
+    /**
+     * The search is turned into SQL inside the transaction, not before it.
+     *
+     * A tag or genre filter builds a `union`, and Exposed asks the current
+     * transaction for the dialect while it does — outside one, that is
+     * "No transaction in context". Nothing noticed for as long as the offline
+     * library was empty and no filter was ever applied to it.
+     */
     override suspend fun findAll(
         search: KomgaSeriesSearch,
         userId: KomgaUserId,
         pageRequest: KomgaPageRequest
     ): Page<KomgaSeries> {
-        val (conditions, joins) = SeriesSearchHelper(userId).toCondition(search.condition)
-        return findAll(
-            conditions = conditions,
-            joins = joins,
-            searchTerm = search.fullTextSearch,
-            userId = userId,
-            pageRequest = pageRequest,
-        )
+        return transaction {
+            val (conditions, joins) = SeriesSearchHelper(userId).toCondition(search.condition)
+            findAll(
+                conditions = conditions,
+                joins = joins,
+                searchTerm = search.fullTextSearch,
+                userId = userId,
+                pageRequest = pageRequest,
+            )
+        }
     }
 
     override suspend fun findAllRecentlyUpdated(
@@ -137,26 +147,26 @@ class ExposedSeriesDtoRepository(
         pageRequest: KomgaPageRequest
     ): Page<KomgaSeries> {
         val pageable = pageRequest.copy(sort = KomgaSort.KomgaSeriesSort.byLastModifiedDateDesc())
-        val (conditions, joins) = SeriesSearchHelper(userId).toCondition(search.condition)
-        val conditionsRefined = conditions.and(seriesTable.createdDate.neq(seriesTable.lastModifiedDate))
-
-        return findAll(
-            conditions = conditionsRefined,
-            joins = joins,
-            searchTerm = search.fullTextSearch,
-            userId = userId,
-            pageRequest = pageable,
-        )
+        return transaction {
+            val (conditions, joins) = SeriesSearchHelper(userId).toCondition(search.condition)
+            findAll(
+                conditions = conditions.and(seriesTable.createdDate.neq(seriesTable.lastModifiedDate)),
+                joins = joins,
+                searchTerm = search.fullTextSearch,
+                userId = userId,
+                pageRequest = pageable,
+            )
+        }
     }
 
-    private suspend fun findAll(
+    private fun findAll(
         conditions: Op<Boolean>,
         joins: Set<RequiredJoin> = emptySet(),
         searchTerm: String? = null,
         userId: KomgaUserId,
         pageRequest: KomgaPageRequest,
     ): Page<KomgaSeries> {
-        return transaction {
+        return run {
 
             val count = seriesTable
                 .join(

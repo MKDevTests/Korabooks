@@ -85,6 +85,8 @@ data class OpdsLink(
     val title: String? = null,
     /** `thr:count` — how many entries hide behind a navigation link. */
     val count: Int? = null,
+    /** Size in bytes, when the server bothers to say. */
+    val length: Long? = null,
 )
 
 object OpdsRel {

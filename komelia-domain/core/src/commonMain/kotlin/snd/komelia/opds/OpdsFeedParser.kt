@@ -58,6 +58,7 @@ class OpdsFeedParser {
             type = attr("type").trim().ifBlank { null },
             title = attr("title").trim().ifBlank { null },
             count = (attr("thr:count").ifBlank { attr("count") }).toIntOrNull(),
+            length = attr("length").toLongOrNull(),
         )
     }
 

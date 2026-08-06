@@ -72,8 +72,8 @@ class OpdsClient(
         val response = ktor.get(descriptionUrl) { authorize() }
         if (!response.status.isSuccess()) return null
         val document = Ksoup.parse(response.bodyAsText(), xmlParser())
-        return document.allElements
-            .filter { it.tagName().substringAfterLast(':').lowercase() == "url" }
+        return document.descendants()
+            .filter { it.localName().equals("url", ignoreCase = true) }
             .firstOrNull { it.attr("type").startsWith(OpdsMediaType.ATOM) }
             ?.attr("template")
             ?.takeIf { it.isNotBlank() }

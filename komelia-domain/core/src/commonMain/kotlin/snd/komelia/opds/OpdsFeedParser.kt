@@ -17,7 +17,7 @@ class OpdsFeedParser {
 
     fun parse(xml: String, feedUrl: String): OpdsFeed {
         val document = Ksoup.parse(xml, xmlParser())
-        val feed = document.descendants("feed").firstOrNull()
+        val feed = document.descendants().firstOrNull { it.localName().equals("feed", ignoreCase = true) }
             ?: throw OpdsParseException("no <feed> element; is $feedUrl an OPDS catalogue?")
 
         return OpdsFeed(
@@ -66,14 +66,6 @@ class OpdsFeedParser {
 
     private fun Element.childText(name: String): String? =
         childrenNamed(name).firstOrNull()?.text()?.trim()?.ifBlank { null }
-
-    /** `opensearch:totalResults` -> `totalResults`. Case is left alone: half the
-     *  names in Atom are camelCase and folding them would need folding the
-     *  comparison too, which is exactly the bug this is meant to avoid. */
-    private fun Element.localName(): String = tagName().substringAfterLast(':')
-
-    private fun com.fleeksoft.ksoup.nodes.Document.descendants(name: String): List<Element> =
-        allElements.filter { it.localName().equals(name, ignoreCase = true) }
 }
 
 class OpdsParseException(message: String) : Exception(message)

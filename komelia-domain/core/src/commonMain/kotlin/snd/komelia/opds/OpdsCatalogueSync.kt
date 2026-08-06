@@ -3,7 +3,9 @@ package snd.komelia.opds
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.MutableSharedFlow
 import snd.komga.client.book.KomgaBookId
+import snd.komga.client.sse.KomgaEvent
 import snd.komga.client.library.KomgaLibraryId
 import snd.komga.client.series.KomgaSeriesId
 
@@ -48,6 +50,15 @@ sealed interface OpdsSyncProgress {
 class OpdsCatalogueSync(
     private val client: OpdsClient,
     private val writer: OpdsMirrorWriter,
+    /**
+     * One event per batch, never one per book.
+     *
+     * The library redraws on these, and it is the only way it learns that rows
+     * appeared underneath it. Twenty thousand of them would spend the sync
+     * redrawing instead of writing; one per hundred shelves keeps a grid
+     * filling in front of the reader at a cost nobody notices.
+     */
+    private val events: MutableSharedFlow<KomgaEvent>? = null,
 ) {
 
     suspend fun sync(
@@ -82,8 +93,10 @@ class OpdsCatalogueSync(
             kept += pending.map { it.series.id }
             books += pending.sumOf { it.books.size }
             covers += pendingCovers.size
+            val last = pending.last().series
             pending.clear()
             pendingCovers.clear()
+            events?.emit(KomgaEvent.SeriesAdded(last.id, last.libraryId))
             onProgress(OpdsSyncProgress.Writing(books, books, title))
         }
 

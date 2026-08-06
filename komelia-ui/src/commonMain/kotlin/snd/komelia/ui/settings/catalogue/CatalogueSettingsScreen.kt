@@ -42,6 +42,12 @@ class CatalogueSettingsScreen : Screen {
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Text(
+                    "La synchronisation continue si vous quittez cet écran. " +
+                        "Revenez ici pour suivre ou arrêter.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
                     "Adresse du flux OPDS de Calibre-Web, par exemple http://192.168.1.10:8083/opds",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -82,10 +88,14 @@ class CatalogueSettingsScreen : Screen {
                     TextButton(onClick = vm::save, enabled = !vm.busy && vm.url.isNotBlank()) {
                         Text("Enregistrer")
                     }
-                    Button(onClick = vm::sync, enabled = !vm.busy && vm.url.isNotBlank()) {
-                        Text("Synchroniser")
+                    if (vm.syncing) {
+                        Button(onClick = vm::cancelSync) { Text("Arrêter") }
+                    } else {
+                        Button(onClick = vm::sync, enabled = !vm.busy && vm.url.isNotBlank()) {
+                            Text("Synchroniser")
+                        }
                     }
-                    if (vm.busy) CircularProgressIndicator(Modifier.padding(start = 4.dp))
+                    if (vm.busy || vm.syncing) CircularProgressIndicator(Modifier.padding(start = 4.dp))
                 }
 
                 vm.status?.let {

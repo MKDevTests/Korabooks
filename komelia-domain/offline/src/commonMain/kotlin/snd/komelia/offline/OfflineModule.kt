@@ -304,6 +304,7 @@ abstract class OfflineModule(
             actions = actions,
             taskEmitter = taskEmitter,
             komgaEvents = komgaEvents,
+            komgaEventSink = komgaEvents,
             bookDownloadEvents = bookDownloadEvents,
             downloadService = downloadService,
             offlineScannerService = offlineScannerService,

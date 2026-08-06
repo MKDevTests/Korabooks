@@ -375,6 +375,7 @@ abstract class AppModule(
                 settings = appRepositories.settingsRepository,
                 secrets = appRepositories.secretsRepository,
                 repositories = offlineRepositories,
+                events = offlineModule.komgaEventSink,
             ),
 
             coilContext = androidContext,

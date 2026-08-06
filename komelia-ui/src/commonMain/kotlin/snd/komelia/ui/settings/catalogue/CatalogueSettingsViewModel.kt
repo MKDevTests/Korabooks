@@ -8,14 +8,20 @@ import cafe.adriel.voyager.core.model.screenModelScope
 import kotlinx.coroutines.launch
 import snd.komelia.opds.OpdsCatalogueService
 import snd.komelia.opds.OpdsSyncProgress
+import snd.komelia.opds.OpdsSyncState
 
 /**
  * The catalogue screen's state.
  *
- * Testing and syncing are kept apart because they answer different questions.
- * "Can I reach it" is one request and takes a second; "mirror it" is hundreds
- * and takes minutes. Being told the address is wrong after four minutes of
- * walking would be its own kind of insult.
+ * It watches the sync rather than running it. A sync of twenty thousand books
+ * takes twenty minutes and belongs to the application: held in this screen's
+ * scope, walking away from the settings killed it — and coming back offered to
+ * start it again, as if nothing had been lost.
+ *
+ * Testing and syncing stay separate buttons because they answer different
+ * questions. Reaching the catalogue is one request and takes a second; mirroring
+ * it is thousands and takes minutes, and being told the address was wrong after
+ * four minutes of walking would be its own kind of insult.
  */
 class CatalogueSettingsViewModel(
     private val catalogue: OpdsCatalogueService,
@@ -32,14 +38,32 @@ class CatalogueSettingsViewModel(
         private set
     var error by mutableStateOf<String?>(null)
         private set
+
+    /** True while a one-shot action of this screen runs — not while a sync does. */
     var busy by mutableStateOf(false)
         private set
 
+    var syncing by mutableStateOf(false)
+        private set
+
     suspend fun initialize() {
-        val config = catalogue.current() ?: return
-        url = config.url
-        username = config.username
-        password = config.password
+        catalogue.current()?.let { config ->
+            url = config.url
+            username = config.username
+            password = config.password
+        }
+        screenModelScope.launch {
+            catalogue.syncState.collect { state ->
+                syncing = state is OpdsSyncState.Running
+                when (state) {
+                    is OpdsSyncState.Idle -> Unit
+                    is OpdsSyncState.Running -> state.progress?.let { status = describe(it) }
+                    is OpdsSyncState.Done -> status =
+                        "${state.result.shelves} séries, ${state.result.books} livres"
+                    is OpdsSyncState.Failed -> error = state.message
+                }
+            }
+        }
     }
 
     fun onUrlChange(value: String) { url = value; status = null; error = null }
@@ -70,24 +94,24 @@ class CatalogueSettingsViewModel(
     fun sync() {
         guarded {
             catalogue.save(url, username, password)
-            val result = catalogue.sync { progress ->
-                status = when (progress) {
-                    is OpdsSyncProgress.Walking ->
-                        "Lecture du catalogue — ${progress.books} livres, ${progress.current}"
-                    is OpdsSyncProgress.Grouping ->
-                        "Regroupement des séries — ${progress.series}, ${progress.current}"
-                    is OpdsSyncProgress.Writing ->
-                        "Enregistrement ${progress.done}/${progress.total} — ${progress.current}"
-                }
-            }
-            status = "${result.shelves} séries, ${result.books} livres, ${result.covers} couvertures"
+            catalogue.startSync()
         }
+    }
+
+    fun cancelSync() = catalogue.cancelSync()
+
+    private fun describe(progress: OpdsSyncProgress) = when (progress) {
+        is OpdsSyncProgress.Walking ->
+            "Lecture du catalogue — ${progress.books} livres, ${progress.current}"
+        is OpdsSyncProgress.Writing ->
+            "${progress.done} livres enregistrés"
+        is OpdsSyncProgress.Grouping ->
+            "Regroupement — ${progress.series} séries, ${progress.current}"
     }
 
     private fun guarded(block: suspend () -> Unit) {
         if (busy) return
         busy = true
-        status = null
         error = null
         screenModelScope.launch {
             try {

@@ -1,8 +1,14 @@
 package snd.komelia.opds
 
 import io.github.oshai.kotlinlogging.KotlinLogging
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import snd.komga.client.book.KomgaBookId
 import snd.komga.client.library.KomgaLibraryId
 import snd.komga.client.series.KomgaSeriesId
 
@@ -45,7 +51,13 @@ class OpdsCatalogueSync(
     ): OpdsSyncResult {
         val libraryId = writer.library(catalogueUrl, catalogueName)
         val mapper = OpdsMapper(libraryId = libraryId, catalogueId = catalogueUrl)
-        val walker = OpdsCatalogueWalker(fetch = { client.feed(it) })
+        // Logged per request: when a sync looks stuck, the only useful question
+        // is whether it is still asking the server for things, and logcat can
+        // answer it without a screen.
+        val walker = OpdsCatalogueWalker(fetch = { url ->
+            logger.info { "OPDS fetch $url" }
+            client.feed(url)
+        })
 
         val shelves = walker.walk(catalogueUrl) {
             onProgress(OpdsSyncProgress.Walking(it.shelves, it.books, it.current))
@@ -67,6 +79,7 @@ class OpdsCatalogueSync(
             kept += mapped.series.id
             books += mapped.books.size
             covers += fetched.size
+            logger.info { "OPDS wrote '${shelf.title}' (${mapped.books.size} books, ${fetched.size} covers)" }
             onProgress(OpdsSyncProgress.Writing(index + 1, shelves.size, shelf.title))
         }
 
@@ -74,11 +87,24 @@ class OpdsCatalogueSync(
         return OpdsSyncResult(libraryId, kept.size, books, covers)
     }
 
-    private suspend fun coversOf(shelf: OpdsShelf, mapper: OpdsMapper) = buildMap {
-        for (entry in shelf.entries) {
-            val href = entry.thumbnail?.href ?: continue
-            val bytes = client.bytes(href) ?: continue
-            put(mapper.bookId(entry), bytes)
+    /**
+     * Six covers at a time.
+     *
+     * One request per book, and a library is hundreds of books: done one after
+     * another this is the slowest part of a sync by a wide margin. Six is
+     * enough to keep the connection busy without turning a home server into a
+     * denial of service against itself.
+     */
+    private suspend fun coversOf(shelf: OpdsShelf, mapper: OpdsMapper): Map<KomgaBookId, ByteArray> =
+        coroutineScope {
+            val gate = Semaphore(6)
+            shelf.entries
+                .mapNotNull { entry -> entry.thumbnail?.href?.let { entry to it } }
+                .map { (entry, href) ->
+                    async { gate.withPermit { client.bytes(href) }?.let { mapper.bookId(entry) to it } }
+                }
+                .awaitAll()
+                .filterNotNull()
+                .toMap()
         }
-    }
 }

@@ -35,9 +35,19 @@ class OpdsCatalogueWalker(
         val shelves = mutableListOf<OpdsShelf>()
         val claimed = mutableSetOf<String>()
 
+        // Reading an index is itself a few hundred requests, and it happens
+        // before a single shelf exists to report. Without this the screen sits
+        // on the same sentence for minutes and the sync looks hung — which is
+        // exactly what it looked like the first time it ran for real.
+        var visited = 0
+        val report: (String) -> Unit = { where ->
+            visited++
+            onProgress(OpdsWalkProgress(shelves.size, claimed.size, "$where ($visited)"))
+        }
+
         val seriesIndex = root.entries.firstOrNull { it.looksLike(SERIES_WORDS) }?.navigation?.href
         if (seriesIndex != null) {
-            for (shelf in navigationEntries(seriesIndex)) {
+            for (shelf in navigationEntries(seriesIndex, report = report)) {
                 val href = shelf.navigation?.href ?: continue
                 val books = booksOf(href)
                 if (books.isEmpty()) continue
@@ -48,7 +58,9 @@ class OpdsCatalogueWalker(
         }
 
         val bookSources = root.entries.firstOrNull { it.looksLike(AUTHOR_WORDS) }?.navigation?.href
-            ?.let { navigationEntries(it).mapNotNull { entry -> entry.navigation?.href } }
+            ?.let { index ->
+                navigationEntries(index, report = report).mapNotNull { entry -> entry.navigation?.href }
+            }
             ?: root.entries.mapNotNull { it.navigation?.href }
 
         for (source in bookSources) {
@@ -69,7 +81,11 @@ class OpdsCatalogueWalker(
      * A feed that mixes books and sub-shelves stops the descent: it is a shelf
      * itself, not an index.
      */
-    private suspend fun navigationEntries(url: String, depth: Int = 0): List<OpdsEntry> {
+    private suspend fun navigationEntries(
+        url: String,
+        depth: Int = 0,
+        report: (String) -> Unit = {},
+    ): List<OpdsEntry> {
         if (depth >= maxDepth) return emptyList()
         val entries = pages(url).flatMap { it.entries }
         if (entries.any { it.isBook }) return entries.filter { !it.isBook }
@@ -77,11 +93,12 @@ class OpdsCatalogueWalker(
         val direct = mutableListOf<OpdsEntry>()
         for (entry in entries) {
             val href = entry.navigation?.href ?: continue
+            report(entry.title)
             val nested = pages(href).flatMap { page -> page.entries }
             // A sub-feed of books means this entry is a shelf; a sub-feed of
             // shelves means it was only a letter, and the shelves are below.
             if (nested.none { it.isBook } && nested.isNotEmpty()) {
-                direct += navigationEntries(href, depth + 1)
+                direct += navigationEntries(href, depth + 1, report)
             } else {
                 direct += entry
             }

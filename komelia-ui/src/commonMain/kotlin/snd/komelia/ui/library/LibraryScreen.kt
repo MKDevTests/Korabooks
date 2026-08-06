@@ -687,17 +687,33 @@ class LibraryScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    items(authorsTabState.authors, key = { it }) { name ->
+                    items(authorsTabState.authors, key = { it.name }) { author ->
                         Surface(
                             shape = RoundedCornerShape(8.dp),
                             color = MaterialTheme.colorScheme.surfaceVariant,
-                            modifier = Modifier.fillMaxWidth().clickable { onAuthorClick(name) },
+                            modifier = Modifier.fillMaxWidth()
+                                .clickable { onAuthorClick(author.name) },
                         ) {
-                            Text(
-                                name,
-                                style = MaterialTheme.typography.bodyMedium,
+                            Row(
                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 12.dp),
-                            )
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    author.name,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                // Absent when the library is served by a real
+                                // Komga, which publishes names and no tally.
+                                author.bookCount?.let { count ->
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(
+                                        "$count",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
                         }
                     }
                     item(span = { GridItemSpan(maxLineSpan) }) {

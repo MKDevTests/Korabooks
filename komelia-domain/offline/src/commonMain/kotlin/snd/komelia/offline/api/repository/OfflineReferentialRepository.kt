@@ -1,6 +1,7 @@
 package snd.komelia.offline.api.repository
 
 import kotlinx.datetime.LocalDate
+import snd.komelia.komga.api.model.KomeliaAuthorCount
 import snd.komga.client.collection.KomgaCollectionId
 import snd.komga.client.common.KomgaAuthor
 import snd.komga.client.common.KomgaPageRequest
@@ -10,6 +11,18 @@ import snd.komga.client.readlist.KomgaReadListId
 import snd.komga.client.series.KomgaSeriesId
 
 interface OfflineReferentialRepository {
+
+    /**
+     * Distinct author names, each with the number of books credited to them.
+     *
+     * Grouped in SQL rather than counted name by name: a page of fifty authors
+     * would otherwise cost fifty-one queries.
+     */
+    suspend fun findAllAuthorCounts(
+        search: String?,
+        libraryIds: List<KomgaLibraryId>,
+        pageRequest: KomgaPageRequest,
+    ): Page<KomeliaAuthorCount>
 
     suspend fun findAllAuthorsByName(
         search: String,

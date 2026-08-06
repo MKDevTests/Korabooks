@@ -11,9 +11,13 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import snd.komelia.AppNotifications
 import snd.komelia.komga.api.KomgaReferentialApi
+import snd.komelia.komga.api.model.KomeliaAuthorCount
 import snd.komelia.ui.LoadState
 import snd.komga.client.common.KomgaPageRequest
 import snd.komga.client.library.KomgaLibraryId
+import io.github.oshai.kotlinlogging.KotlinLogging
+
+private val logger = KotlinLogging.logger { }
 
 /**
  * Everyone who wrote something in the library, by name.
@@ -34,7 +38,7 @@ class LibraryAuthorsTabState(
     private val mutableState = MutableStateFlow<LoadState<Unit>>(LoadState.Uninitialized)
     val state = mutableState.asStateFlow()
 
-    var authors by mutableStateOf<List<String>>(emptyList())
+    var authors by mutableStateOf<List<KomeliaAuthorCount>>(emptyList())
         private set
     var totalAuthorsCount by mutableStateOf(0)
         private set
@@ -80,7 +84,7 @@ class LibraryAuthorsTabState(
         notifications.runCatchingToNotifications {
             if (authors.isEmpty()) mutableState.value = LoadState.Loading
 
-            val response = referentialApi.getAuthors(
+            val response = referentialApi.getAuthorCounts(
                 search = searchTerm.takeIf { it.isNotBlank() },
                 libraryIds = libraryId?.let { listOf(it) } ?: emptyList(),
                 pageRequest = KomgaPageRequest(
@@ -90,10 +94,11 @@ class LibraryAuthorsTabState(
                 ),
             )
 
-            // The query is distinct over (name, role), so one person credited
-            // twice comes back twice. Collapsing here keeps the page count
-            // honest at the cost of a page that is occasionally one row short.
-            authors = response.content.map { it.name }.distinct()
+            logger.info {
+                "authors tab: '$searchTerm' -> ${response.totalElements} authors, " +
+                    "page $page of ${response.totalPages}, ${response.content.size} shown"
+            }
+            authors = response.content
             totalAuthorsCount = response.totalElements
             totalPages = response.totalPages
             currentPage = response.number + 1

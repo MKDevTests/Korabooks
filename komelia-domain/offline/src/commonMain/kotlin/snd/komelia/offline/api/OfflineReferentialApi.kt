@@ -1,6 +1,7 @@
 package snd.komelia.offline.api
 
 import snd.komelia.komga.api.KomgaReferentialApi
+import snd.komelia.komga.api.model.KomeliaAuthorCount
 import snd.komelia.offline.api.repository.OfflineReferentialRepository
 import snd.komga.client.collection.KomgaCollectionId
 import snd.komga.client.common.KomgaAuthor
@@ -58,6 +59,18 @@ class OfflineReferentialApi(
                 pageRequest
             )
         }
+    }
+
+    override suspend fun getAuthorCounts(
+        search: String?,
+        libraryIds: List<KomgaLibraryId>,
+        pageRequest: KomgaPageRequest?
+    ): Page<KomeliaAuthorCount> {
+        return referentialRepository.findAllAuthorCounts(
+            search = search,
+            libraryIds = libraryIds,
+            pageRequest = pageRequest ?: KomgaPageRequest(),
+        )
     }
 
     override suspend fun getAuthorsNames(search: String?): List<String> {

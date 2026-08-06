@@ -1,5 +1,6 @@
 package snd.komelia.komga.api
 
+import snd.komelia.komga.api.model.KomeliaAuthorCount
 import snd.komga.client.collection.KomgaCollectionId
 import snd.komga.client.common.KomgaAuthor
 import snd.komga.client.common.KomgaPageRequest
@@ -18,6 +19,34 @@ interface KomgaReferentialApi {
         readListId: KomgaReadListId? = null,
         pageRequest: KomgaPageRequest? = null,
     ): Page<KomgaAuthor>
+
+    /**
+     * The same authors, each with the size of their shelf.
+     *
+     * Served by the local mirror, which can group its own rows; the default
+     * here answers with names and no counts so a server-backed implementation
+     * never has to invent one.
+     */
+    suspend fun getAuthorCounts(
+        search: String? = null,
+        libraryIds: List<KomgaLibraryId> = emptyList(),
+        pageRequest: KomgaPageRequest? = null,
+    ): Page<KomeliaAuthorCount> {
+        val page = getAuthors(search = search, libraryIds = libraryIds, pageRequest = pageRequest)
+        return Page(
+            content = page.content.map { KomeliaAuthorCount(it.name, null) }.distinctBy { it.name },
+            pageable = page.pageable,
+            totalPages = page.totalPages,
+            totalElements = page.totalElements,
+            last = page.last,
+            first = page.first,
+            size = page.size,
+            number = page.number,
+            sort = page.sort,
+            numberOfElements = page.numberOfElements,
+            empty = page.empty,
+        )
+    }
 
     suspend fun getAuthorsNames(search: String? = null): List<String>
 

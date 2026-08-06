@@ -123,26 +123,51 @@ fun KomgaSearchOperator.StringOp.toCondition(field: Column<String>) =
 
 private fun Instant.toLocalDateUtc() = this.toLocalDateTime(UTC).date
 
-infix fun ExpressionWithColumnType<String?>.equalsIgnoreCaseNullable(t: String): Op<Boolean> = this.lowerCase().eq(t)
-infix fun ExpressionWithColumnType<String?>.notEqualsIgnoreCaseNullable(t: String): Op<Boolean> = this.lowerCase().neq(t)
+/**
+ * Folds case the way the database does, and no further.
+ *
+ * These comparisons lower the column with SQL's `LOWER()`, which in SQLite
+ * touches A–Z and nothing else: `LOWER('Éluard')` is still `Éluard`. Folding
+ * the needle with Kotlin's full-Unicode `lowercase()` would therefore compare
+ * `éluard` against a column that kept its `É` and match nothing. Both sides
+ * have to agree on the same partial fold, so this is it.
+ */
+private fun String.sqlLowercase(): String =
+    map { if (it in 'A'..'Z') it + ('a' - 'A') else it }.joinToString("")
 
-infix fun ExpressionWithColumnType<String>.equalsIgnoreCase(t: String): Op<Boolean> = this.lowerCase().eq(t)
-infix fun ExpressionWithColumnType<String>.notEqualsIgnoreCase(t: String): Op<Boolean> = this.lowerCase().neq(t)
+/**
+ * Every one of these lowers the column, so every one must lower the operand.
+ *
+ * Left half-done, `lower(name) = 'Bernard Werber'` compares a lowercased column
+ * against a capitalised needle and can never be true — which is what a tap on
+ * an author's name was doing.
+ */
+infix fun ExpressionWithColumnType<String?>.equalsIgnoreCaseNullable(t: String): Op<Boolean> =
+    this.lowerCase().eq(t.sqlLowercase())
+
+infix fun ExpressionWithColumnType<String?>.notEqualsIgnoreCaseNullable(t: String): Op<Boolean> =
+    this.lowerCase().neq(t.sqlLowercase())
+
+infix fun ExpressionWithColumnType<String>.equalsIgnoreCase(t: String): Op<Boolean> =
+    this.lowerCase().eq(t.sqlLowercase())
+
+infix fun ExpressionWithColumnType<String>.notEqualsIgnoreCase(t: String): Op<Boolean> =
+    this.lowerCase().neq(t.sqlLowercase())
 
 infix fun ExpressionWithColumnType<String>.startsWithIgnoreCase(t: String): Op<Boolean> =
-    this.lowerCase().like("$t%")
+    this.lowerCase().like("${t.sqlLowercase()}%")
 
 infix fun ExpressionWithColumnType<String>.doesNotStartWithIgnoreCase(t: String): Op<Boolean> =
-    this.lowerCase().notLike("$t%")
+    this.lowerCase().notLike("${t.sqlLowercase()}%")
 
 infix fun ExpressionWithColumnType<String>.endsWithIgnoreCase(t: String): Op<Boolean> =
-    this.lowerCase().like("%$t")
+    this.lowerCase().like("%${t.sqlLowercase()}")
 
 infix fun ExpressionWithColumnType<String>.doesNotEndWithIgnoreCase(t: String): Op<Boolean> =
-    this.lowerCase().notLike("%$t")
+    this.lowerCase().notLike("%${t.sqlLowercase()}")
 
 infix fun ExpressionWithColumnType<String>.containsIgnoreCase(t: String): Op<Boolean> =
-    this.lowerCase().like("%$t%")
+    this.lowerCase().like("%${t.sqlLowercase()}%")
 
 infix fun ExpressionWithColumnType<String>.notContainsIgnoreCase(t: String): Op<Boolean> =
-    this.lowerCase().notLike("%$t%")
+    this.lowerCase().notLike("%${t.sqlLowercase()}%")

@@ -2,6 +2,7 @@ package snd.komelia.db.offline.dto
 
 import kotlinx.datetime.LocalDate
 import org.jetbrains.exposed.v1.core.JoinType
+import org.jetbrains.exposed.v1.core.countDistinct
 import org.jetbrains.exposed.v1.core.SortOrder
 import org.jetbrains.exposed.v1.core.alias
 import org.jetbrains.exposed.v1.core.eq
@@ -27,6 +28,7 @@ import snd.komelia.db.offline.tables.OfflineSeriesMetadataSharingTable
 import snd.komelia.db.offline.tables.OfflineSeriesMetadataTable
 import snd.komelia.db.offline.tables.OfflineSeriesMetadataTagTable
 import snd.komelia.db.offline.tables.OfflineSeriesTable
+import snd.komelia.komga.api.model.KomeliaAuthorCount
 import snd.komelia.offline.api.repository.OfflineReferentialRepository
 import snd.komga.client.collection.KomgaCollectionId
 import snd.komga.client.common.KomgaAuthor
@@ -50,6 +52,58 @@ class ExposedOfflineReferentialRepository(
     private val bookMetaAggregationTable = OfflineBookMetadataAggregationTable
     private val bookMetaAggregationAuthorTable = OfflineBookMetadataAggregationAuthorTable
     private val bookTagAggregationTable = OfflineBookMetadataAggregationTagTable
+
+    override suspend fun findAllAuthorCounts(
+        search: String?,
+        libraryIds: List<KomgaLibraryId>,
+        pageRequest: KomgaPageRequest
+    ): Page<KomeliaAuthorCount> {
+        return transaction {
+            val name = bookAuthorsTable.name
+            val books = bookAuthorsTable.bookId.countDistinct()
+
+            // The book row is only read to know which library an author was
+            // found in; without a library filter it would be a join paid for
+            // nothing.
+            val source = if (libraryIds.isEmpty()) bookAuthorsTable
+            else bookAuthorsTable.join(
+                otherTable = bookTable,
+                joinType = JoinType.INNER,
+                onColumn = bookAuthorsTable.bookId,
+                otherColumn = bookTable.id,
+            )
+
+            val query = source.select(name, books)
+                .apply {
+                    // A substring, so "werber" finds both "Bernard Werber" and
+                    // "Werber Bernard" — a Calibre library rarely spells a name
+                    // the same way twice.
+                    search?.takeIf { it.isNotBlank() }?.let { term ->
+                        andWhere { name.containsIgnoreCase(term.trim()) }
+                    }
+                }
+                .apply {
+                    if (libraryIds.isNotEmpty()) {
+                        andWhere { bookTable.libraryId.inList(libraryIds.map { it.value }) }
+                    }
+                }
+                .groupBy(name)
+
+            // Counts the groups, not the rows: Exposed wraps a grouped query in
+            // a subquery for this, which is exactly the number of authors.
+            val total = query.count()
+
+            val items = query.orderBy(name)
+                .apply {
+                    if (pageRequest.unpaged != true)
+                        limit(pageRequest.size ?: 20)
+                            .offset(pageRequest.offset())
+                }
+                .map { KomeliaAuthorCount(name = it[name], bookCount = it[books].toInt()) }
+
+            page(items, pageRequest, total, true)
+        }
+    }
 
     override suspend fun findAllAuthorsByName(search: String): List<KomgaAuthor> {
         return transaction {

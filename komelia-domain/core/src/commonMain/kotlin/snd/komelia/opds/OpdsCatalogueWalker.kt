@@ -8,6 +8,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
+import kotlin.coroutines.cancellation.CancellationException
 
 private val logger = KotlinLogging.logger { }
 
@@ -39,6 +40,9 @@ private const val PAGE_LIMIT = 400
  * the pause between slices costs nothing next to the slice itself.
  */
 private const val PEEK_SLICE = 256
+
+/** Tries at a failing address before a walk accepts losing what is behind it. */
+private const val ATTEMPTS = 2
 
 /** A query parameter holding a plain number — a page offset, if it is one. */
 private val NUMERIC_PARAM = Regex("([?&][A-Za-z_][A-Za-z_0-9]*=)(\\d+)")
@@ -85,6 +89,29 @@ class OpdsCatalogueWalker(
     private val gate = Semaphore(PARALLELISM)
 
     private suspend fun fetchLimited(url: String): OpdsFeed = gate.withPermit { fetch(url) }
+
+    /**
+     * A fetch a walk can survive losing — but not silently.
+     *
+     * Every failure here costs whole shelves: a dropped index entry takes its
+     * subtree with it, and the sync ends by reporting a smaller library as if
+     * that were the answer. Two real runs of the same catalogue found forty
+     * eight and fifty sources, and nothing anywhere said why. Retried once,
+     * because the failure this meets in practice is a home server briefly
+     * refusing a connection, and logged always, because a walk that quietly
+     * returns less than the catalogue holds is worse than one that fails.
+     */
+    private suspend fun fetchOrNull(url: String): OpdsFeed? {
+        repeat(ATTEMPTS) { attempt ->
+            val result = runCatching { fetchLimited(url) }
+            result.getOrNull()?.let { return it }
+            val cause = result.exceptionOrNull()
+            if (cause is CancellationException) throw cause
+            logger.warn { "OPDS fetch failed (${attempt + 1}/$ATTEMPTS) $url: ${cause?.message}" }
+        }
+        logger.error { "OPDS giving up on $url — the mirror will be missing what was behind it" }
+        return null
+    }
 
     /**
      * Every book in the catalogue, one shelf each.
@@ -291,10 +318,16 @@ class OpdsCatalogueWalker(
         // books were deduplicated afterwards, but the requests were made — a
         // hundred and seventy-six pages of them, measured, for nothing.
         //
-        // The letters are kept rather than the catch-all: they are generated
-        // from the titles that exist, so together they hold everything, and
-        // being separate branches they can be read side by side.
-        val entries = if (all.size > 1) all.filterNot { it.isCatchAll } else all
+        // The catch-all is the half that is kept, and the letters dropped. It
+        // was the other way round for one release, on the theory that separate
+        // letters could be read side by side — and a real library came back
+        // with eight thousand five hundred books out of ten thousand five
+        // hundred and sixty-one. The letters are not a partition: a title the
+        // server files under no letter is reachable only through the catch-all.
+        // Reading side by side also bought nothing here, the server answering
+        // one request at a time whatever we asked of it.
+        val catchAll = if (all.size > 1) all.filter { it.isCatchAll } else emptyList()
+        val entries = catchAll.ifEmpty { all }
 
         // The peeks run together, and this is the whole cost of a sync.
         //
@@ -317,7 +350,7 @@ class OpdsCatalogueWalker(
                         val href = entry.navigation?.href
                         val page = href?.let {
                             report(entry.title, entries.size)
-                            runCatching { fetchLimited(it) }.getOrNull()
+                            fetchOrNull(it)
                         }
                         Triple(entry, href, page)
                     }
@@ -347,7 +380,7 @@ class OpdsCatalogueWalker(
      * long before the last.
      */
     private suspend fun forEachPage(branch: Branch, block: suspend (OpdsFeed) -> Unit) {
-        val first = branch.first ?: runCatching { fetchLimited(branch.href) }.getOrNull() ?: return
+        val first = branch.first ?: fetchOrNull(branch.href) ?: return
         block(first)
 
         // A feed that says how many results it has, and links its second page by
@@ -360,7 +393,7 @@ class OpdsCatalogueWalker(
         if (known != null) {
             for (slice in known.chunked(PEEK_SLICE)) {
                 val pages = coroutineScope {
-                    slice.map { url -> async { runCatching { fetchLimited(url) }.getOrNull() } }.awaitAll()
+                    slice.map { url -> async { fetchOrNull(url) } }.awaitAll()
                 }
                 for (page in pages) block(page ?: continue)
             }
@@ -375,7 +408,7 @@ class OpdsCatalogueWalker(
         while (count < PAGE_LIMIT) {
             val next = page.nextPage ?: return
             if (!visited.add(next)) return
-            page = runCatching { fetchLimited(next) }.getOrNull() ?: return
+            page = fetchOrNull(next) ?: return
             block(page)
             count++
         }

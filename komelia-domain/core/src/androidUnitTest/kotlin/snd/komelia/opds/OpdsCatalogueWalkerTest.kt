@@ -233,10 +233,13 @@ class OpdsCatalogueWalkerTest {
 
     /**
      * Calibre-Web opens each index with "Tout", which holds everything the
-     * letters beside it divide up. Reading both read the catalogue twice.
+     * letters beside it divide up. Reading both read the catalogue twice, and
+     * reading only the letters lost the books this server files under none of
+     * them — two thousand of ten and a half, measured. So the catch-all is the
+     * half that is kept, and it is the letters that go unopened.
      */
     @Test
-    fun ignoresTheCatchAllEntryWhenTheLettersAreThere() = runTest {
+    fun readsTheCatchAllRatherThanTheLettersBesideIt() = runTest {
         val asked = mutableListOf<String>()
         val catalogue = mapOf(
             "/opds" to feed(listOf(nav("Auteurs", "/opds/author"))),
@@ -246,8 +249,10 @@ class OpdsCatalogueWalkerTest {
                     nav("D", "/opds/author/letter/D"),
                 )
             ),
+            // The catch-all holds a book no letter claims, which is the case
+            // that made a real library arrive two thousand books short.
             "/opds/author/letter/00" to feed(listOf(book("b1", "Dune"), book("b2", "Les Furtifs"))),
-            "/opds/author/letter/D" to feed(listOf(book("b1", "Dune"), book("b2", "Les Furtifs"))),
+            "/opds/author/letter/D" to feed(listOf(book("b1", "Dune"))),
         )
         val walker = OpdsCatalogueWalker(fetch = { url ->
             asked += url
@@ -257,7 +262,7 @@ class OpdsCatalogueWalkerTest {
         val shelves = buildList { walker.walkBooks("/opds") { add(it) } }
 
         assertEquals(listOf("Dune", "Les Furtifs"), shelves.map { it.title })
-        assertTrue("/opds/author/letter/00" !in asked, "the catch-all was never opened")
+        assertTrue("/opds/author/letter/D" !in asked, "the letters were never opened")
     }
 
     /** On its own it is not a duplicate of anything, so it is read. */

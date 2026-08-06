@@ -123,6 +123,34 @@ class OpdsCatalogueWalkerTest {
     }
 
     @Test
+    fun prefersTheAlphabeticalIndexToTheAuthorIndex() = runTest {
+        // Calibre-Web's own root, trimmed: an all-books index costs one request
+        // per letter where the author index costs one per author.
+        val catalogue = mapOf(
+            "/opds" to feed(
+                listOf(
+                    nav("Livres alphabétiques", "/opds/books"),
+                    nav("Livres lus", "/opds/readbooks"),
+                    nav("Livres non-lus", "/opds/unreadbooks"),
+                    nav("Auteurs", "/opds/author"),
+                )
+            ),
+            "/opds/books" to feed(listOf(nav("D", "/opds/books/d"))),
+            "/opds/books/d" to feed(listOf(book("b1", "Dune"))),
+            "/opds/author" to feed(listOf(nav("Frank Herbert", "/opds/author/1"))),
+            "/opds/author/1" to feed(listOf(book("b1", "Dune"))),
+            // Slices of the library, and never the library: matching these
+            // would mirror the read books and call it a catalogue.
+            "/opds/readbooks" to feed(listOf(book("b7", "Déjà lu"))),
+            "/opds/unreadbooks" to feed(listOf(book("b8", "Pas lu"))),
+        )
+
+        val shelves = walkerOver(catalogue).walk("/opds")
+
+        assertEquals(listOf("Dune"), shelves.map { it.title })
+    }
+
+    @Test
     fun aCatalogueWithNeitherIndexFallsBackToWhateverTheRootOffers() = runTest {
         val catalogue = mapOf(
             "/opds" to feed(listOf(nav("Nouveautés", "/opds/new"))),

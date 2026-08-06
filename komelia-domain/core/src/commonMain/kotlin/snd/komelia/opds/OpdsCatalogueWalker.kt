@@ -1,5 +1,9 @@
 package snd.komelia.opds
 
+import io.github.oshai.kotlinlogging.KotlinLogging
+
+private val logger = KotlinLogging.logger { }
+
 /** What the walk has found so far, for a screen that would rather not look frozen. */
 data class OpdsWalkProgress(val shelves: Int, val books: Int, val current: String)
 
@@ -45,7 +49,15 @@ class OpdsCatalogueWalker(
             onProgress(OpdsWalkProgress(shelves.size, claimed.size, "$where ($visited)"))
         }
 
-        val seriesIndex = root.entries.firstOrNull { it.looksLike(SERIES_WORDS) }?.navigation?.href
+        // The two recognitions are the whole risk of this class, so they are
+        // said out loud: a walk that finds a suspiciously round number of books
+        // has usually fallen back, and no other line would show it.
+        logger.info {
+            "OPDS root offers " + root.entries.joinToString { "${it.title} -> ${it.navigation?.href}" }
+        }
+
+        val seriesIndex = root.entries.firstOrNull { it.leadsTo(SERIES_SEGMENTS, SERIES_WORDS) }?.navigation?.href
+        logger.info { "OPDS series index: ${seriesIndex ?: "not recognised"}" }
         if (seriesIndex != null) {
             for (shelf in navigationEntries(seriesIndex, report = report)) {
                 val href = shelf.navigation?.href ?: continue
@@ -57,11 +69,21 @@ class OpdsCatalogueWalker(
             }
         }
 
-        val bookSources = root.entries.firstOrNull { it.looksLike(AUTHOR_WORDS) }?.navigation?.href
+        logger.info { "OPDS series walk: ${shelves.size} shelves, ${claimed.size} books" }
+
+        // An alphabetical index of every book, when the catalogue has one, is
+        // both complete and cheap: twenty-six letters where the author index
+        // costs one request per author. Calibre-Web calls it /opds/books.
+        val bookIndex = root.entries.firstOrNull { it.leadsTo(ALL_BOOKS_SEGMENTS, emptyList()) }?.navigation?.href
+            ?: root.entries.firstOrNull { it.leadsTo(AUTHOR_SEGMENTS, AUTHOR_WORDS) }?.navigation?.href
+        logger.info { "OPDS book index: ${bookIndex ?: "not recognised — falling back to the root feeds"}" }
+
+        val bookSources = bookIndex
             ?.let { index ->
                 navigationEntries(index, report = report).mapNotNull { entry -> entry.navigation?.href }
             }
             ?: root.entries.mapNotNull { it.navigation?.href }
+        logger.info { "OPDS ${bookSources.size} book sources to read" }
 
         for (source in bookSources) {
             for (book in booksOf(source)) {
@@ -132,20 +154,39 @@ class OpdsCatalogueWalker(
 
     private val cache = mutableMapOf<String, List<OpdsFeed>>()
 
-    private fun OpdsEntry.looksLike(words: List<String>): Boolean {
+    /**
+     * Recognises an index by the last segment of its address, and only then by
+     * the words in its title.
+     *
+     * The segment, because a path is a server's own vocabulary and it does not
+     * translate: Calibre-Web serves /opds/series whatever language its
+     * interface speaks. The last segment specifically, because a substring
+     * match on "books" also matches /opds/readbooks and /opds/unreadbooks,
+     * which are two slices of a library rather than a library.
+     */
+    private fun OpdsEntry.leadsTo(segments: List<String>, words: List<String>): Boolean {
         val target = navigation?.href ?: return false
-        val haystack = (title + " " + target).lowercase()
-        return words.any { haystack.contains(it) }
+        val segment = target.substringBefore('?').substringBefore('#')
+            .trimEnd('/')
+            .substringAfterLast('/')
+            .lowercase()
+        if (segment in segments) return true
+        return words.isNotEmpty() && words.any { title.lowercase().contains(it) }
     }
 
     companion object {
+        private val ALL_BOOKS_SEGMENTS = listOf("books", "letter", "alphabetical", "title", "titles")
+        private val SERIES_SEGMENTS = listOf("series", "serie", "reihen")
+        private val AUTHOR_SEGMENTS = listOf("author", "authors", "autor", "auteur")
+
         /**
-         * Enough languages to cover the servers a French reader is likely to
-         * point this at. The href is matched too, and that is usually what
-         * saves the day: Calibre-Web serves /opds/series whatever its interface
-         * language.
+         * Titles are the fallback, so they carry the languages a French reader
+         * is likely to point this at. No such list for the book index: its
+         * titles ("Livres alphabétiques", "Books by title") share their words
+         * with half the other entries, and a wrong match there would quietly
+         * mirror a slice of the library instead of the library.
          */
-        private val SERIES_WORDS = listOf("series", "série", "serie", "reihe", "serier")
-        private val AUTHOR_WORDS = listOf("author", "auteur", "autor", "verfasser")
+        private val SERIES_WORDS = listOf("série", "series", "serie", "reihe")
+        private val AUTHOR_WORDS = listOf("auteur", "author", "autor", "verfasser")
     }
 }

@@ -188,6 +188,13 @@ abstract class AppModule(
             isOffline = isOffline,
         )
         offlineModuleRef = offlineModuleInstance
+        // Covers of a mirrored catalogue live on the server, not in the mirror.
+        val opdsCovers = snd.komelia.opds.OpdsCoverLoader(
+            ktor = ktor,
+            settings = appRepositories.settingsRepository,
+            secrets = appRepositories.secretsRepository,
+        )
+        offlineModuleInstance.coverLoader = { url -> opdsCovers.load(url) }
         val offlineModule: OfflineDependencies = offlineModuleInstance.initDependencies()
 
         // Toggle gating the Reading Stats completion-event log. Read once at

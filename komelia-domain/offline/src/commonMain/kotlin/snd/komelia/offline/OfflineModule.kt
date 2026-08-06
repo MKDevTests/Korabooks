@@ -139,6 +139,16 @@ abstract class OfflineModule(
     private val moduleScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private var taskProcessor: TaskProcessor? = null
 
+    /**
+     * Set before [initDependencies], by whoever knows where covers come from.
+     *
+     * A var rather than a constructor parameter because the platform modules
+     * build this class and have no idea a catalogue exists — and because the
+     * thing that fetches covers is configured by the user, long after the
+     * module was assembled.
+     */
+    var coverLoader: (suspend (String) -> ByteArray?)? = null
+
     fun close() {
         taskProcessor?.close()
         moduleScope.cancel()
@@ -216,6 +226,7 @@ abstract class OfflineModule(
                 actions = actions,
                 fileContentExtractors = fileService,
                 offlineUserId = offlineUserId,
+                coverLoader = coverLoader,
             ),
             collectionsApi = OfflineCollectionsApi(),
             fileSystemApi = OfflineFileSystemApi(),
@@ -238,6 +249,7 @@ abstract class OfflineModule(
                 bookRepository = repositories.bookRepository,
                 thumbnailBookRepository = repositories.thumbnailBookRepository,
                 offlineUserId = offlineUserId,
+                coverLoader = coverLoader,
             ),
             settingsApi = OfflineSettingsApi(),
             tasksApi = OfflineTaskApi(),

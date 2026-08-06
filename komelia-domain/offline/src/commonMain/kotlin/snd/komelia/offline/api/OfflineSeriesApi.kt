@@ -45,6 +45,9 @@ class OfflineSeriesApi(
     private val bookRepository: OfflineBookRepository,
     private val thumbnailBookRepository: OfflineThumbnailBookRepository,
     private val offlineUserId: StateFlow<KomgaUserId>,
+
+    /** See [OfflineBookApi]: a shelf borrows its cover from one of its books. */
+    private val coverLoader: (suspend (String) -> ByteArray?)? = null,
 ) : KomgaSeriesApi {
     private val userId
         get() = offlineUserId.value
@@ -170,9 +173,10 @@ class OfflineSeriesApi(
             SeriesCover.LAST -> bookRepository.findLastIdInSeriesOrNull(seriesId)
         }
 
-        if (bookId != null) return thumbnailBookRepository.findSelectedByBookId(bookId)?.thumbnail
-
-        return null
+        val thumbnail = bookId?.let { thumbnailBookRepository.findSelectedByBookId(it) } ?: return null
+        thumbnail.thumbnail?.let { return it }
+        val url = thumbnail.url?.takeIf { it.isNotBlank() } ?: return null
+        return coverLoader?.invoke(url)
     }
 
     override suspend fun getThumbnail(

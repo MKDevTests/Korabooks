@@ -59,6 +59,17 @@ class OfflineBookApi(
     private val fileContentExtractors: BookContentExtractors,
 
     private val offlineUserId: StateFlow<KomgaUserId>,
+
+    /**
+     * Fetches a cover the mirror only knows the address of.
+     *
+     * Null everywhere the mirror holds real bytes — a Komga library downloaded
+     * for offline reading carries its own thumbnails. A catalogue mirrored over
+     * OPDS does not: twenty thousand covers are not worth six hundred megabytes
+     * of database, so the sync stores the address and the picture arrives when
+     * a grid asks for it.
+     */
+    private val coverLoader: (suspend (String) -> ByteArray?)? = null,
 ) : KomgaBookApi {
 
     private val userId
@@ -203,7 +214,10 @@ class OfflineBookApi(
     }
 
     override suspend fun getDefaultThumbnail(bookId: KomgaBookId): ByteArray? {
-        return thumbnailBookRepository.findSelectedByBookId(bookId)?.thumbnail
+        val thumbnail = thumbnailBookRepository.findSelectedByBookId(bookId) ?: return null
+        thumbnail.thumbnail?.let { return it }
+        val url = thumbnail.url?.takeIf { it.isNotBlank() } ?: return null
+        return coverLoader?.invoke(url)
     }
 
     override suspend fun getThumbnail(

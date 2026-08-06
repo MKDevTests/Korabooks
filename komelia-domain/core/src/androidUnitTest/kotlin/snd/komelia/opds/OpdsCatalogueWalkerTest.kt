@@ -231,6 +231,47 @@ class OpdsCatalogueWalkerTest {
         assertTrue("/opds/author/1?offset=4" in asked, "the last page was worked out, not followed")
     }
 
+    /**
+     * Calibre-Web opens each index with "Tout", which holds everything the
+     * letters beside it divide up. Reading both read the catalogue twice.
+     */
+    @Test
+    fun ignoresTheCatchAllEntryWhenTheLettersAreThere() = runTest {
+        val asked = mutableListOf<String>()
+        val catalogue = mapOf(
+            "/opds" to feed(listOf(nav("Auteurs", "/opds/author"))),
+            "/opds/author" to feed(
+                listOf(
+                    nav("Tout", "/opds/author/letter/00"),
+                    nav("D", "/opds/author/letter/D"),
+                )
+            ),
+            "/opds/author/letter/00" to feed(listOf(book("b1", "Dune"), book("b2", "Les Furtifs"))),
+            "/opds/author/letter/D" to feed(listOf(book("b1", "Dune"), book("b2", "Les Furtifs"))),
+        )
+        val walker = OpdsCatalogueWalker(fetch = { url ->
+            asked += url
+            catalogue[url] ?: feed(emptyList())
+        })
+
+        val shelves = buildList { walker.walkBooks("/opds") { add(it) } }
+
+        assertEquals(listOf("Dune", "Les Furtifs"), shelves.map { it.title })
+        assertTrue("/opds/author/letter/00" !in asked, "the catch-all was never opened")
+    }
+
+    /** On its own it is not a duplicate of anything, so it is read. */
+    @Test
+    fun readsTheCatchAllWhenItIsTheOnlyEntry() = runTest {
+        val catalogue = mapOf(
+            "/opds" to feed(listOf(nav("Auteurs", "/opds/author"))),
+            "/opds/author" to feed(listOf(nav("Tout", "/opds/author/letter/00"))),
+            "/opds/author/letter/00" to feed(listOf(book("b1", "Dune"))),
+        )
+
+        assertEquals(listOf("Dune"), books(catalogue).map { it.title })
+    }
+
     /** Without a count there is nothing to compute from, so we ask page by page. */
     @Test
     fun stillFollowsNextLinksWhenTheFeedIsNotCounted() = runTest {

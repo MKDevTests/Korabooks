@@ -242,12 +242,16 @@ class OpdsCatalogueWalker(
     private fun reporter(
         onProgress: (OpdsWalkProgress) -> Unit,
         counts: () -> Pair<Int, Int>,
-    ): (String) -> Unit {
+    ): (String, Int) -> Unit {
         var visited = 0
-        return { where ->
+        return { where, total ->
             visited++
             val (shelves, books) = counts()
-            onProgress(OpdsWalkProgress(shelves, books, "$where ($visited)"))
+            // Out of how many, because "1 234" alone says nothing about whether
+            // this ends in a minute or in an hour — and this phase is the one
+            // that looks frozen.
+            val position = if (total > 0) "$visited/$total" else "$visited"
+            onProgress(OpdsWalkProgress(shelves, books, "$where ($position)"))
         }
     }
 
@@ -274,12 +278,23 @@ class OpdsCatalogueWalker(
     private suspend fun branchesUnder(
         url: String,
         depth: Int = 0,
-        report: (String) -> Unit = {},
+        report: (String, Int) -> Unit = { _, _ -> },
     ): List<Branch> {
         if (depth >= maxDepth) return emptyList()
         val index = allPages(url)
-        val entries = index.flatMap { it.entries }
-        if (entries.any { it.isBook }) return listOf(Branch(url, url, index.firstOrNull()))
+        val all = index.flatMap { it.entries }
+        if (all.any { it.isBook }) return listOf(Branch(url, url, index.firstOrNull()))
+
+        // Calibre-Web opens every index with an entry titled "Tout", holding
+        // the whole library, and follows it with the letters that divide the
+        // same library up. Reading both means reading the catalogue twice: the
+        // books were deduplicated afterwards, but the requests were made — a
+        // hundred and seventy-six pages of them, measured, for nothing.
+        //
+        // The letters are kept rather than the catch-all: they are generated
+        // from the titles that exist, so together they hold everything, and
+        // being separate branches they can be read side by side.
+        val entries = if (all.size > 1) all.filterNot { it.isCatchAll } else all
 
         // The peeks run together, and this is the whole cost of a sync.
         //
@@ -301,7 +316,7 @@ class OpdsCatalogueWalker(
                     async {
                         val href = entry.navigation?.href
                         val page = href?.let {
-                            report(entry.title)
+                            report(entry.title, entries.size)
                             runCatching { fetchLimited(it) }.getOrNull()
                         }
                         Triple(entry, href, page)
@@ -412,6 +427,24 @@ class OpdsCatalogueWalker(
      * match on "books" also matches /opds/readbooks and /opds/unreadbooks,
      * which are two slices of a library rather than a library.
      */
+    /**
+     * An index entry that repeats everything its siblings divide up.
+     *
+     * Recognised by its title, in the languages a catalogue is likely to speak,
+     * and only when it also leads somewhere shaped like a sibling. A title is a
+     * weak signal on its own — a series really called "Tout" would be a fair
+     * name for a book — so the address has to agree: Calibre-Web files the
+     * catch-all under the same `letter/` path as the letters, with `00` where
+     * the letter goes.
+     */
+    private val OpdsEntry.isCatchAll: Boolean
+        get() {
+            val target = navigation?.href ?: return false
+            val segment = target.substringBefore('?').trimEnd('/').substringAfterLast('/')
+            if (segment != CATCH_ALL_SEGMENT) return false
+            return title.trim().lowercase() in CATCH_ALL_WORDS
+        }
+
     private fun OpdsEntry.leadsTo(segments: List<String>, words: List<String>): Boolean {
         val target = navigation?.href ?: return false
         val segment = target.substringBefore('?').substringBefore('#')
@@ -427,6 +460,12 @@ class OpdsCatalogueWalker(
         private val SERIES_SEGMENTS = listOf("series", "serie", "reihen")
         private val AUTHOR_SEGMENTS = listOf("author", "authors", "autor", "auteur")
         private val RECENT_SEGMENTS = listOf("new", "recent", "latest", "neu")
+
+        /** Where a letter would be, in the address of the entry that holds them all. */
+        private const val CATCH_ALL_SEGMENT = "00"
+        private val CATCH_ALL_WORDS = setOf(
+            "tout", "tous", "all", "alle", "todo", "todos", "tutti", "tudo", "全部",
+        )
 
         /**
          * Titles are the fallback, so they carry the languages a French reader

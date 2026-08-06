@@ -127,8 +127,13 @@ class CatalogueSettingsViewModel(
             "Lecture du catalogue — ${progress.books} livres, ${progress.current}"
         is OpdsSyncProgress.Writing ->
             "${progress.done} livres enregistrés"
+        // The grouping pass spends its first stretch reading the series index —
+        // thousands of requests before a single series has been regrouped.
+        // Calling that "Regroupement — 0 séries" is what made the sync look
+        // stuck exactly where it was working hardest.
         is OpdsSyncProgress.Grouping ->
-            "Regroupement — ${progress.series} séries, ${progress.current}"
+            if (progress.series == 0) "Lecture des séries — ${progress.current}"
+            else "Regroupement — ${progress.series} séries, ${progress.current}"
     }
 
     private fun guarded(block: suspend () -> Unit) {

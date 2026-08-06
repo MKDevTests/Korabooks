@@ -208,7 +208,12 @@ class ExposedOfflineBookDtoRepository(
                 if (userId != OfflineUser.ROOT) {
                     andWhere { bookTable.libraryId.inSubQuery(librariesCondition) }
                 }
-            }.groupBy(bookTable.id)
+            }
+            // No GROUP BY. Grouping by book id returned one row per book, each
+            // holding COUNT(DISTINCT id) = 1, and taking the first of them made
+            // every library report exactly one book — so the grid showed page 1
+            // of 1 whatever it held, and the count beside it read "1 livre"
+            // above twenty covers.
             .firstOrNull()
             ?.let { it[bookTable.id.countDistinct()] } ?: 0
 

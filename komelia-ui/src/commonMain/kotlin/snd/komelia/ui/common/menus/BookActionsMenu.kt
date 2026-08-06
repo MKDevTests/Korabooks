@@ -227,7 +227,12 @@ fun BookActionsMenu(
                 onClick = { showEditDialog = true },
             )
         }
-        if (!isOffline && showDownloadOption) {
+        // Offline normally means there is nothing left to download. A book
+        // mirrored from a catalogue is the exception: an offline row pointing
+        // at a file still on a server, and fetching it is the only way it will
+        // ever be read.
+        val fromCatalogue = book.url.startsWith("http://") || book.url.startsWith("https://")
+        if ((!isOffline || (fromCatalogue && !book.downloaded)) && showDownloadOption) {
             DropdownMenuItem(
                 text = { Text(LocalStrings.current.ui.download, style = MaterialTheme.typography.labelLarge) },
                 leadingIcon = { Icon(Icons.Rounded.Download, null) },

@@ -149,6 +149,9 @@ abstract class OfflineModule(
      */
     var coverLoader: (suspend (String) -> ByteArray?)? = null
 
+    /** Same contract as [coverLoader], for the books themselves. */
+    var catalogueDownloader: snd.komelia.offline.sync.CatalogueFileDownloader? = null
+
     fun close() {
         taskProcessor?.close()
         moduleScope.cancel()
@@ -266,6 +269,17 @@ abstract class OfflineModule(
             taskEmitter = taskEmitter,
             downloadManager = downloadManager,
             komgaBookClient = komgaClientFactory.bookClient(),
+            catalogueDownloader = catalogueDownloader?.let {
+                snd.komelia.offline.sync.CatalogueBookDownloader(
+                    libraryDownloadPath = repositories.offlineSettingsRepository.getDownloadDirectory(),
+                    bookRepository = repositories.bookRepository,
+                    seriesRepository = repositories.seriesRepository,
+                    libraryRepository = repositories.libraryRepository,
+                    mediaRepository = repositories.mediaRepository,
+                    downloader = it,
+                    komgaEvents = komgaEvents,
+                )
+            },
         )
         val taskProcessor = TaskProcessor(
             tasksRepository = repositories.tasksRepository,

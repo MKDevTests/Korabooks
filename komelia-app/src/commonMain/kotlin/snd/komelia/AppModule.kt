@@ -195,6 +195,11 @@ abstract class AppModule(
             secrets = appRepositories.secretsRepository,
         )
         offlineModuleInstance.coverLoader = { url -> opdsCovers.load(url) }
+        offlineModuleInstance.catalogueDownloader = snd.komelia.opds.OpdsFileDownloader(
+            ktor = ktor,
+            settings = appRepositories.settingsRepository,
+            secrets = appRepositories.secretsRepository,
+        )
         val offlineModule: OfflineDependencies = offlineModuleInstance.initDependencies()
 
         // Toggle gating the Reading Stats completion-event log. Read once at

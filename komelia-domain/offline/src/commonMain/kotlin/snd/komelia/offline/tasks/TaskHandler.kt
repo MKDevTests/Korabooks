@@ -11,6 +11,7 @@ import snd.komelia.offline.library.actions.LibraryEmptyTrashAction
 import snd.komelia.offline.series.actions.SeriesAggregateBookMetadataAction
 import snd.komelia.offline.series.actions.SeriesDeleteAction
 import snd.komelia.offline.series.actions.SeriesRefreshMetadataAction
+import snd.komelia.offline.sync.CatalogueBookDownloader
 import snd.komelia.offline.sync.PlatformDownloadManager
 import snd.komelia.offline.tasks.model.TaskData
 import snd.komelia.offline.tasks.model.TaskData.AggregateSeriesMetadata
@@ -36,6 +37,15 @@ class TaskHandler(
     private val taskEmitter: OfflineTaskEmitter,
     private val downloadManager: PlatformDownloadManager,
     private val komgaBookClient: KomgaBookClient,
+
+    /**
+     * Present only when the library came from a catalogue mirror.
+     *
+     * Those books carry a URL where a Komga book carries a server-side path,
+     * and the Komga download pipeline cannot fetch them: it begins by asking a
+     * Komga server about a book it has never heard of.
+     */
+    private val catalogueDownloader: CatalogueBookDownloader? = null,
 ) {
     suspend fun handleTask(entry: TaskEntry) {
         logger.info { "handling task ${entry.task}" }
@@ -75,16 +85,29 @@ class TaskHandler(
             is ScanLibrary -> {}
 
             is DownloadBook -> {
-                downloadManager.launchBookDownload(task.bookId)
+                val book = bookRepository.find(task.bookId)
+                if (catalogueDownloader != null && book != null && catalogueDownloader.handles(book)) {
+                    catalogueDownloader.download(task.bookId)
+                } else {
+                    downloadManager.launchBookDownload(task.bookId)
+                }
             }
 
             is DownloadSeries -> {
-                val books = komgaBookClient.getBookList(
-                    conditionBuilder = anyOfBooks { seriesId { isEqualTo(task.seriesId) } },
-                    pageRequest = KomgaPageRequest(unpaged = true)
-                ).content
+                // A mirrored series is already in the local database, so its
+                // books are listed from there rather than from a server that,
+                // in that case, does not exist.
+                val mirrored = bookRepository.findAllIdsBySeriesId(task.seriesId)
+                if (catalogueDownloader != null && mirrored.isNotEmpty()) {
+                    mirrored.forEach { taskEmitter.downloadBook(it) }
+                } else {
+                    val books = komgaBookClient.getBookList(
+                        conditionBuilder = anyOfBooks { seriesId { isEqualTo(task.seriesId) } },
+                        pageRequest = KomgaPageRequest(unpaged = true)
+                    ).content
 
-                books.forEach { taskEmitter.downloadBook(it.id) }
+                    books.forEach { taskEmitter.downloadBook(it.id) }
+                }
             }
 
             is TaskData.DownloadBookCancel -> downloadManager.cancelBookDownload(task.bookId)

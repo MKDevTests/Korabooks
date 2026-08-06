@@ -39,11 +39,6 @@ include(":komelia-infra:onnxruntime:api")
 include(":komelia-infra:onnxruntime:jvm")
 include(":komelia-infra:webview")
 
-include(":komelia-komf-extension:app")
-include(":komelia-komf-extension:content")
-include(":komelia-komf-extension:background")
-include(":komelia-komf-extension:popup")
-include(":komelia-komf-extension:shared")
 
 include(":third_party:ChipTextField:chiptextfield-core")
 include(":third_party:ChipTextField:chiptextfield-m3")

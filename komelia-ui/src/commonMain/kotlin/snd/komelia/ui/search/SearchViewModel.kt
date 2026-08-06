@@ -69,6 +69,7 @@ class SearchViewModel(
     // Authors tab: list of matching author names (role-agnostic), and the
     // currently drilled-into author with their series + books.
     var authorNames by mutableStateOf<List<String>>(emptyList())
+    var authorBookCounts by mutableStateOf<Map<String, Int>>(emptyMap())
         private set
 
     var selectedAuthor by mutableStateOf<String?>(null)
@@ -254,9 +255,23 @@ class SearchViewModel(
         this.userSelectedTab = type
     }
 
+    /**
+     * Asks for the counts, and settles for the names.
+     *
+     * Only the local mirror can say how many books an author has — a Komga
+     * server answers with names alone — so the count is an extra the screen
+     * shows when it exists rather than something it waits for.
+     */
     private suspend fun loadAuthorNames() {
         appNotifications.runCatchingToNotifications {
-            authorNames = referentialApi.getAuthorsNames(query.ifBlank { null })
+            val page = referentialApi.getAuthorCounts(
+                search = query.ifBlank { null },
+                pageRequest = KomgaPageRequest(size = AUTHOR_PAGE_SIZE),
+            )
+            authorNames = page.content.map { it.name }
+            authorBookCounts = page.content
+                .mapNotNull { author -> author.bookCount?.let { author.name to it } }
+                .toMap()
         }.onFailure { mutableState.value = LoadState.Error(it) }
     }
 
@@ -370,6 +385,16 @@ class SearchViewModel(
         val terms = trimmed.split(Regex("\\s+"))
         if (terms.any { it.length < 4 }) return trimmed
         return terms.joinToString(" ") { "$it~1" }
+    }
+
+    private companion object {
+        /**
+         * Authors shown for one query.
+         *
+         * A search names an author or it does not: past the first few dozen
+         * matches nobody is reading the list, they are retyping the query.
+         */
+        const val AUTHOR_PAGE_SIZE = 50
     }
 }
 

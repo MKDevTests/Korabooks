@@ -655,7 +655,7 @@ val EnStrings = AppStrings(
         "komgaUrl" to "Komga Url",
         "komgaUsername" to "Komga Username",
         "komgaWebui" to "Komga webui",
-        "komgaWebuiEpubReaderAdapted" to "Komga webui epub reader adapted for use in Kora",
+        "komgaWebuiEpubReaderAdapted" to "Komga webui epub reader adapted for use in Korabooks",
         "label" to "Label",
         "labels" to "Labels",
         "lancer" to "Run",

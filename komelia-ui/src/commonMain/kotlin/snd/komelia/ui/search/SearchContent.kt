@@ -62,6 +62,7 @@ fun SearchContent(
     onSeriesClick: (KomgaSeries) -> Unit,
 
     authorNames: List<String>,
+    authorBookCounts: Map<String, Int>,
     selectedAuthor: String?,
     onAuthorSelected: (String) -> Unit,
     onAuthorCleared: () -> Unit,
@@ -153,6 +154,7 @@ fun SearchContent(
                             items(authorNames, key = { it }) { name ->
                                 AuthorListItem(
                                     name = name,
+                                    bookCount = authorBookCounts[name],
                                     onClick = { onAuthorSelected(name) },
                                     modifier = widthModifier
                                 )
@@ -230,6 +232,14 @@ private fun TransparentBarSpacer() {
 @Composable
 private fun AuthorListItem(
     name: String,
+    /**
+     * How many books the mirror holds for this author, when it can say.
+     *
+     * Null rather than zero when the answer is a remote server's: only the
+     * local mirror counts, and showing "0 livres" for an author who plainly
+     * has some would be worse than showing nothing.
+     */
+    bookCount: Int?,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -243,7 +253,14 @@ private fun AuthorListItem(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.size(20.dp))
-            Text(name, style = MaterialTheme.typography.bodyLarge)
+            Text(name, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+            if (bookCount != null) {
+                Text(
+                    if (bookCount > 1) "$bookCount livres" else "$bookCount livre",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
         HorizontalDivider()
     }

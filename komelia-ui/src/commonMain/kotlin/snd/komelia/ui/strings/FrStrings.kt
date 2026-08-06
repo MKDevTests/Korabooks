@@ -667,7 +667,7 @@ val FrStrings = AppStrings(
         "komgaUrl" to "URL Komga",
         "komgaUsername" to "Nom d'utilisateur Komga",
         "komgaWebui" to "Interface web Komga",
-        "komgaWebuiEpubReaderAdapted" to "Lecteur EPUB de l'interface web Komga, adapté à Kora",
+        "komgaWebuiEpubReaderAdapted" to "Lecteur EPUB de l'interface web Komga, adapté à Korabooks",
         "label" to "Libellé",
         "labels" to "Labels",
         "lancer" to "Lancer",

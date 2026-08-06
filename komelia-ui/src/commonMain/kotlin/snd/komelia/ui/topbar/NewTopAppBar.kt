@@ -101,7 +101,7 @@ fun NewTopAppBar(
             }
 
             Text(
-                "Kora",
+                "Korabooks",
                 style = MaterialTheme.typography.titleLarge.copy(
                     fontFamily = notoSerif,
                     fontWeight = FontWeight.Bold,

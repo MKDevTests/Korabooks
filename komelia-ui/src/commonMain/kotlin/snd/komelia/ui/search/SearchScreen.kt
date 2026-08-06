@@ -102,6 +102,7 @@ class SearchScreen(
                                             onBookClick = { navigator.push(bookScreen(it)) },
 
                                             authorNames = vm.authorNames,
+                                            authorBookCounts = vm.authorBookCounts,
                                             selectedAuthor = vm.selectedAuthor,
                                             onAuthorSelected = vm::onAuthorSelected,
                                             onAuthorCleared = vm::clearSelectedAuthor,
@@ -161,6 +162,7 @@ class SearchScreen(
                             onBookClick = { navigator.push(bookScreen(it)) },
 
                             authorNames = vm.authorNames,
+                            authorBookCounts = vm.authorBookCounts,
                             selectedAuthor = vm.selectedAuthor,
                             onAuthorSelected = vm::onAuthorSelected,
                             onAuthorCleared = vm::clearSelectedAuthor,
@@ -207,6 +209,7 @@ class SearchScreen(
                                 onBookClick = { navigator.push(bookScreen(it)) },
 
                                 authorNames = vm.authorNames,
+                                authorBookCounts = vm.authorBookCounts,
                                 selectedAuthor = vm.selectedAuthor,
                                 onAuthorSelected = vm::onAuthorSelected,
                                 onAuthorCleared = vm::clearSelectedAuthor,

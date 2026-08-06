@@ -42,6 +42,7 @@ import snd.komelia.ui.LoadState.Uninitialized
 import snd.komelia.ui.common.cards.defaultCardWidth
 import snd.komelia.ui.common.menus.LibraryMenuActions
 import snd.komelia.ui.library.LibraryTab.BOOKS
+import snd.komelia.ui.library.LibraryTab.GENRE_TREE
 import snd.komelia.ui.library.LibraryTab.COLLECTIONS
 import snd.komelia.ui.library.LibraryTab.FOR_YOU
 import snd.komelia.ui.library.LibraryTab.GENRE
@@ -145,6 +146,12 @@ class LibraryViewModel(
         screenModelScope = screenModelScope,
         cardWidth = cardWidth,
     )
+    val genresTabState = LibraryGenresTabState(
+        referentialApi = referentialApi,
+        notifications = appNotifications,
+        libraryId = libraryId,
+        screenModelScope = screenModelScope,
+    )
     val collectionsTabState = LibraryCollectionsTabState(
         collectionApi = collectionApi,
         appNotifications = appNotifications,
@@ -223,6 +230,7 @@ class LibraryViewModel(
             when (currentTab) {
                 SERIES -> seriesTabState.reload()
                 BOOKS -> booksTabState.reload()
+                GENRE_TREE -> genresTabState.reload()
                 COLLECTIONS -> collectionsTabState.reload()
                 READ_LISTS -> readListsTabState.reload()
                 GENRE -> genreTabState.reload()
@@ -407,6 +415,27 @@ class LibraryViewModel(
         screenModelScope.launch { settingsRepository.putCardWidth(width) }
     }
 
+    fun toGenreTreeTab() {
+        currentTab = GENRE_TREE
+    }
+
+    /**
+     * Shows a branch of the tree as a list of series.
+     *
+     * A branch means itself and everything under it: asking for History and
+     * being shown nothing because every book is filed under History.France
+     * would be an odd sort of answer.
+     */
+    fun showGenre(node: GenreNode) {
+        seriesTabState.filterState.restore(
+            snd.komelia.ui.series.SeriesFilter(
+                includeGenres = node.subtree,
+                inclusionMode = snd.komelia.ui.series.SeriesFilterState.TagInclusionMode.INCLUDE_IF_ANY_MATCH,
+            )
+        )
+        currentTab = SERIES
+    }
+
     fun toBooksTab() {
         currentTab = BOOKS
     }
@@ -461,6 +490,7 @@ class LibraryViewModel(
 enum class LibraryTab {
     BOOKS,
     SERIES,
+    GENRE_TREE,
     COLLECTIONS,
     READ_LISTS,
     GENRE,

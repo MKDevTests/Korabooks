@@ -27,6 +27,9 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material.icons.rounded.GridView
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.TextButton
@@ -110,6 +113,7 @@ import snd.komelia.ui.common.menus.LibraryActionsMenu
 import snd.komelia.ui.common.menus.LibraryMenuActions
 import snd.komelia.ui.topbar.NewTopAppBar
 import snd.komelia.ui.library.LibraryTab.BOOKS
+import snd.komelia.ui.library.LibraryTab.GENRE_TREE
 import snd.komelia.ui.library.LibraryTab.COLLECTIONS
 import snd.komelia.ui.library.LibraryTab.FOR_YOU
 import snd.komelia.ui.library.LibraryTab.GENRE
@@ -195,6 +199,11 @@ class LibraryScreen(
                             ) to state::onPageSizeChange
                         }
 
+                        GENRE_TREE -> {
+                            val count = vm.genresTabState.roots.size
+                            Triple(count, if (count > 1) "genres" else "genre", 50) to { _: Int -> }
+                        }
+
                         COLLECTIONS -> {
                             val state = vm.collectionsTabState
                             Triple(
@@ -255,6 +264,7 @@ class LibraryScreen(
                             genresCount = vm.genresCount,
                             onBrowseClick = vm::toBrowseTab,
                             onBooksClick = vm::toBooksTab,
+                            onGenreTreeClick = vm::toGenreTreeTab,
                             onCollectionsClick = vm::toCollectionsTab,
                             onReadListsClick = vm::toReadListsTab,
                             onGenreClick = vm::toGenreTab,
@@ -303,6 +313,7 @@ class LibraryScreen(
                                     onReadingClick = vm::toggleContinueReading,
                                     onBrowseClick = vm::toBrowseTab,
                                     onBooksClick = vm::toBooksTab,
+                                    onGenreTreeClick = vm::toGenreTreeTab,
                                     onCollectionsClick = vm::toCollectionsTab,
                                     onReadListsClick = vm::toReadListsTab,
                                     onGenreClick = vm::toGenreTab,
@@ -351,6 +362,7 @@ class LibraryScreen(
                         when (vm.currentTab) {
                             SERIES -> BrowseTab(vm.seriesTabState, beforeContent)
                             BOOKS -> BooksTab(vm.booksTabState, beforeContent)
+                            GENRE_TREE -> GenresTab(vm.genresTabState, vm::showGenre, beforeContent)
                             COLLECTIONS -> CollectionsTab(vm.collectionsTabState, beforeContent)
                             READ_LISTS -> ReadListsTab(vm.readListsTabState, beforeContent)
                             GENRE -> GenreTab(vm.genreTabState, beforeContent)
@@ -571,6 +583,81 @@ class LibraryScreen(
                     onPageChange = booksTabState::onPageChange,
                     minSize = booksTabState.cardWidth.collectAsState().value,
                 )
+            }
+        }
+    }
+
+    /**
+     * The genre tree, and a search that finds a branch in it.
+     *
+     * Tapping a branch shows the series filed under it *and* under everything
+     * beneath it — asking for Histoire and being told there is nothing, because
+     * every book sits in Histoire.France, would be a strange answer.
+     */
+    @Composable
+    private fun GenresTab(
+        genresTabState: LibraryGenresTabState,
+        onGenreClick: (GenreNode) -> Unit,
+        beforeContent: @Composable () -> Unit,
+    ) {
+        LaunchedEffect(libraryId) { genresTabState.initialize() }
+
+        Column(Modifier.fillMaxSize()) {
+            beforeContent()
+            OutlinedTextField(
+                value = genresTabState.searchTerm,
+                onValueChange = genresTabState::onSearchChange,
+                label = { Text(LocalStrings.current.ui.search) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp),
+            )
+            if (genresTabState.expanded.isNotEmpty()) {
+                TextButton(
+                    onClick = genresTabState::collapseAll,
+                    modifier = Modifier.padding(horizontal = 10.dp),
+                ) { Text("Tout replier") }
+            }
+
+            val rows = genresTabState.visibleRows()
+            LazyColumn(Modifier.fillMaxSize()) {
+                items(rows, key = { it.path }) { node ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onGenreClick(node) }
+                            .padding(
+                                start = 10.dp + (node.depth * 18).dp,
+                                end = 10.dp,
+                                top = 10.dp,
+                                bottom = 10.dp,
+                            ),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        if (node.children.isNotEmpty()) {
+                            IconButton(
+                                onClick = { genresTabState.toggle(node) },
+                                modifier = Modifier.size(28.dp),
+                            ) {
+                                Icon(
+                                    if (node.path in genresTabState.expanded) Icons.Rounded.ExpandMore
+                                    else Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                                    contentDescription = null,
+                                )
+                            }
+                        } else {
+                            Spacer(Modifier.width(28.dp))
+                        }
+                        Text(node.label, style = MaterialTheme.typography.bodyLarge)
+                        if (node.children.isNotEmpty()) {
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "${node.children.size}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
             }
         }
     }
@@ -882,6 +969,7 @@ private fun LibraryTabChips(
     onReadingClick: () -> Unit,
     onBrowseClick: () -> Unit,
     onBooksClick: () -> Unit = {},
+    onGenreTreeClick: () -> Unit = {},
     onCollectionsClick: () -> Unit,
     onReadListsClick: () -> Unit,
     onGenreClick: () -> Unit = {},
@@ -921,6 +1009,16 @@ private fun LibraryTabChips(
                     colors = chipColors,
                     shape = AppFilterChipDefaults.shape(),
                     border = AppFilterChipDefaults.filterChipBorder(currentTab == SERIES),
+                )
+            }
+            item {
+                FilterChip(
+                    selected = currentTab == GENRE_TREE,
+                    onClick = onGenreTreeClick,
+                    label = { Text("Genres") },
+                    colors = chipColors,
+                    shape = AppFilterChipDefaults.shape(),
+                    border = AppFilterChipDefaults.filterChipBorder(currentTab == GENRE_TREE),
                 )
             }
             if (collectionsCount > 0) {
@@ -1142,6 +1240,7 @@ private fun LibrarySegmentedButtons(
     genresCount: Int = 0,
     onBrowseClick: () -> Unit,
     onBooksClick: () -> Unit = {},
+    onGenreTreeClick: () -> Unit = {},
     onCollectionsClick: () -> Unit,
     onReadListsClick: () -> Unit,
     onGenreClick: () -> Unit = {},
@@ -1179,6 +1278,13 @@ private fun LibrarySegmentedButtons(
                 onClick = onBrowseClick,
                 shape = SegmentedButtonDefaults.itemShape(index = index++, count = tabCount),
                 label = { Text(LocalStrings.current.ui.series) },
+                colors = colors
+            )
+            SegmentedButton(
+                selected = currentTab == GENRE_TREE,
+                onClick = onGenreTreeClick,
+                shape = SegmentedButtonDefaults.itemShape(index = index++, count = tabCount),
+                label = { Text("Genres") },
                 colors = colors
             )
             if (collectionsCount > 0) {
@@ -1220,8 +1326,8 @@ private fun LibrarySegmentedButtons(
 }
 
 private fun getTabCount(collectionsCount: Int, readListsCount: Int, genresCount: Int = 0): Int {
-    // Series, Books and For you always exist; the rest depend on the content.
-    var count = 3
+    // Series, Books, Genres and For you always exist; the rest depend on the content.
+    var count = 4
     if (collectionsCount > 0) count++
     if (readListsCount > 0) count++
     if (genresCount > 0) count++

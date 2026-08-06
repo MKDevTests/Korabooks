@@ -132,7 +132,7 @@ class OpdsCatalogueSync(
                 pending += mapped
                 if (pending.size >= BATCH) {
                     currentCoroutineContext().ensureActive()
-                    writer.write(pending, emptyMap())
+                    writer.regroup(pending)
                     kept += pending.map { it.series.id }
                     pending.clear()
                     onProgress(OpdsSyncProgress.Grouping(kept.size, books, shelf.title))
@@ -140,7 +140,7 @@ class OpdsCatalogueSync(
             }
         }
         if (pending.isNotEmpty()) {
-            writer.write(pending, emptyMap())
+            writer.regroup(pending)
             kept += pending.map { it.series.id }
             pending.clear()
         }

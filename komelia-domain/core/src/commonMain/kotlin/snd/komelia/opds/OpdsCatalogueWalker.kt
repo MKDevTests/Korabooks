@@ -12,11 +12,16 @@ private val logger = KotlinLogging.logger { }
 /**
  * Requests in flight at once.
  *
- * Eight keeps a home server's connection busy through the latency of the last
+ * Sixteen keeps a home server's connection busy through the latency of the last
  * answer without behaving like a crawler against a machine that also has to
  * serve the reader's browser.
+ *
+ * It only means anything if the HTTP client allows as much: eight here against
+ * OkHttp's default of five requests per host was five, and the grouping pass —
+ * one request per series, two thousand of them — crawled at a series a second
+ * because of it.
  */
-private const val PARALLELISM = 8
+private const val PARALLELISM = 16
 
 /** Pages read from one feed before we decide it is lying about having more. */
 private const val PAGE_LIMIT = 400

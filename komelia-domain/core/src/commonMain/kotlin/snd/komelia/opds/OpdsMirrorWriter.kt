@@ -113,7 +113,65 @@ class OpdsMirrorWriter(private val repositories: OfflineRepositories) {
     suspend fun write(mapped: MappedShelf, covers: Map<KomgaBookId, String> = emptyMap()) =
         write(listOf(mapped), covers)
 
+    /**
+     * Moves books into their series, and writes nothing else about them.
+     *
+     * The grouping pass revisits books the first pass already wrote in full.
+     * Writing them again — metadata, authors, tags, links, media, cover, seven
+     * statements a book — costs everything and changes one column. Here the
+     * existing rows are read once per batch and saved back with a new parent.
+     *
+     * Books the first pass never saw are written whole: a series shelf may
+     * offer a book the alphabetical index missed, and losing it to an
+     * optimisation would be a poor trade.
+     */
+    suspend fun regroup(batch: List<MappedShelf>) {
+        if (batch.isEmpty()) return
+        val existing = batch.flatMap { it.books.map { book -> book.id } }
+            .chunked(IDS_PER_QUERY)
+            .flatMap { repositories.bookRepository.findIn(it) }
+            .associateBy { it.id }
+
+        repositories.transactionTemplate.execute {
+            for (mapped in batch) {
+                writeSeries(mapped)
+                for (book in mapped.books) {
+                    val current = existing[book.id]
+                    if (current == null) writeBook(book, null)
+                    else if (current.seriesId != mapped.series.id) {
+                        repositories.bookRepository.save(current.copy(seriesId = mapped.series.id))
+                    }
+                }
+            }
+        }
+    }
+
     private suspend fun writeShelf(mapped: MappedShelf, covers: Map<KomgaBookId, String>) {
+        writeSeries(mapped)
+        for (book in mapped.books) {
+            writeBook(book, covers[book.id])
+        }
+        covers[mapped.books.firstOrNull()?.id]?.let { href ->
+            repositories.thumbnailSeriesRepository.save(
+                OfflineThumbnailSeries(
+                    id = KomgaThumbnailId(OpdsMapper.stableId(mapped.series.id.value, "cover")),
+                    seriesId = mapped.series.id,
+                    type = OfflineThumbnailSeries.Type.SIDECAR,
+                    selected = true,
+                    mediaType = "image/jpeg",
+                    fileSize = 0,
+                    // Unknown without decoding the image, and nothing reads
+                    // them: Coil measures the bitmap it actually loads.
+                    width = 0,
+                    height = 0,
+                    url = href,
+                    thumbnail = null,
+                )
+            )
+        }
+    }
+
+    private suspend fun writeSeries(mapped: MappedShelf) {
         val series = mapped.series
         run {
             repositories.seriesRepository.save(
@@ -166,29 +224,6 @@ class OpdsMirrorWriter(private val repositories: OfflineRepositories) {
             repositories.bookMetadataAggregationRepository.save(
                 OfflineBookMetadataAggregation(seriesId = series.id)
             )
-
-            for (book in mapped.books) {
-                writeBook(book, covers[book.id])
-            }
-
-            covers[mapped.books.firstOrNull()?.id]?.let { href ->
-                repositories.thumbnailSeriesRepository.save(
-                    OfflineThumbnailSeries(
-                        id = KomgaThumbnailId(OpdsMapper.stableId(series.id.value, "cover")),
-                        seriesId = series.id,
-                        type = OfflineThumbnailSeries.Type.SIDECAR,
-                        selected = true,
-                        mediaType = "image/jpeg",
-                        fileSize = 0,
-                        // Unknown without decoding the image, and nothing reads
-                        // them: Coil measures the bitmap it actually loads.
-                        width = 0,
-                        height = 0,
-                        url = href,
-                        thumbnail = null,
-                    )
-                )
-            }
         }
     }
 
@@ -312,6 +347,10 @@ class OpdsMirrorWriter(private val repositories: OfflineRepositories) {
     private suspend fun deleteSeries(ids: List<KomgaSeriesId>) {
         ids.chunked(IDS_PER_QUERY).forEach { slice ->
             repositories.transactionTemplate.execute {
+                // The cover row first: it points at the series, and a shelf
+                // emptied by the grouping pass keeps the thumbnail it borrowed
+                // from the book that left.
+                repositories.thumbnailSeriesRepository.deleteBySeriesIds(slice)
                 repositories.seriesMetadataRepository.delete(slice)
                 repositories.bookMetadataAggregationRepository.delete(slice)
                 repositories.seriesRepository.delete(slice)

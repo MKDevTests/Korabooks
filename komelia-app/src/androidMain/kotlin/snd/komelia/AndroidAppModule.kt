@@ -125,6 +125,18 @@ class AndroidAppModule(
         .connectTimeout(0, TimeUnit.SECONDS)
         .writeTimeout(0, TimeUnit.SECONDS)
         .readTimeout(0, TimeUnit.SECONDS)
+        // OkHttp allows five concurrent requests to one host, and that default
+        // was the real ceiling on the catalogue sync: its grouping pass is one
+        // request per series — two thousand of them, against a server that
+        // takes seconds to answer — and raising the walker's parallelism above
+        // the client changed nothing at all. Sixteen keeps a slow server busy
+        // without turning a sync into an attack on it.
+        .dispatcher(
+            okhttp3.Dispatcher().apply {
+                maxRequests = 64
+                maxRequestsPerHost = 16
+            }
+        )
 //        .addInterceptor(HttpLoggingInterceptor { okHttpLogger.info { it } }
 //            .setLevel(HttpLoggingInterceptor.Level.BASIC))
         .build()

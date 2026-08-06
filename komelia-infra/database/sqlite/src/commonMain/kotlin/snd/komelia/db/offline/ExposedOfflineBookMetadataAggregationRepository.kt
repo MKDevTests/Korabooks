@@ -55,16 +55,27 @@ class ExposedOfflineBookMetadataAggregationRepository( database: Database) :
     }
 
 
+    /**
+     * The only read here, and it used to run outside a transaction.
+     *
+     * Nothing asked for an aggregation while the mirror was empty, so the
+     * missing transaction stayed invisible until a library had series in it —
+     * at which point every screen that shows one failed with "no transaction in
+     * context". The where clause named the tag table while selecting from the
+     * aggregation one, which is the same kind of accident.
+     */
     override suspend fun find(seriesId: KomgaSeriesId): OfflineBookMetadataAggregation? {
-        val rowResult = aggregationTable
-            .selectAll()
-            .where { aggregationTagTable.seriesId.eq(seriesId.value) }
-            .firstOrNull() ?: return null
+        return transaction {
+            val rowResult = aggregationTable
+                .selectAll()
+                .where { aggregationTable.seriesId.eq(seriesId.value) }
+                .firstOrNull() ?: return@transaction null
 
-        val authors = findAuthors(seriesId.value)
-        val tags = findTags(seriesId.value)
-
-        return rowResult.toBookMetaModel(authors, tags)
+            rowResult.toBookMetaModel(
+                authors = findAuthors(seriesId.value),
+                tags = findTags(seriesId.value),
+            )
+        }
     }
 
     private fun findTags(seriesId: String): List<String> {

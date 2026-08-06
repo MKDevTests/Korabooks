@@ -256,13 +256,6 @@ class OpdsMirrorWriter(private val repositories: OfflineRepositories) {
     }
 
     /**
-     * Drops the shelves the catalogue no longer offers.
-     *
-     * Deliberately narrow: it removes series, never books inside a kept series,
-     * because a book missing from one sync is more often a server hiccup than a
-     * deletion, and losing a downloaded file to a hiccup is unforgivable.
-     */
-    /**
      * Deletes the shelves left with no books, and says how many.
      *
      * Grouping moves a book from its own one-book shelf into a series, and the
@@ -273,26 +266,52 @@ class OpdsMirrorWriter(private val repositories: OfflineRepositories) {
     suspend fun pruneEmptySeries(libraryId: KomgaLibraryId): Int {
         val all = repositories.seriesRepository.findAllByLibraryId(libraryId).map { it.id }
         if (all.isEmpty()) return 0
-        val withBooks = repositories.bookRepository.findAllBySeriesIds(all).map { it.seriesId }.toSet()
+        val withBooks = mutableSetOf<KomgaSeriesId>()
+        all.chunked(IDS_PER_QUERY).forEach { slice ->
+            repositories.bookRepository.findAllBySeriesIds(slice)
+                .mapTo(withBooks) { it.seriesId }
+        }
         val empty = all.filterNot { it in withBooks }
         if (empty.isEmpty()) return 0
-        repositories.transactionTemplate.execute {
-            repositories.seriesMetadataRepository.delete(empty)
-            repositories.bookMetadataAggregationRepository.delete(empty)
-            repositories.seriesRepository.delete(empty)
-        }
+        deleteSeries(empty)
         return empty.size
     }
 
+    /**
+     * Drops the shelves the catalogue no longer offers.
+     *
+     * Deliberately narrow: it removes series, never books inside a kept series,
+     * because a book missing from one sync is more often a server hiccup than a
+     * deletion, and losing a downloaded file to a hiccup is unforgivable.
+     */
     suspend fun prune(libraryId: KomgaLibraryId, kept: Set<KomgaSeriesId>) {
         val stale = repositories.seriesRepository.findAllByLibraryId(libraryId)
             .map { it.id }
             .filterNot { it in kept }
         if (stale.isEmpty()) return
-        repositories.transactionTemplate.execute {
-            repositories.seriesMetadataRepository.delete(stale)
-            repositories.bookMetadataAggregationRepository.delete(stale)
-            repositories.seriesRepository.delete(stale)
+        deleteSeries(stale)
+    }
+
+    /**
+     * Deletes in slices, because SQLite counts the ids.
+     *
+     * An `in (…)` clause becomes one bound parameter per id, and a catalogue of
+     * twenty thousand books walks straight past the limit — a sync that spent
+     * twenty minutes getting everything right would then fail on its last
+     * statement.
+     */
+    private suspend fun deleteSeries(ids: List<KomgaSeriesId>) {
+        ids.chunked(IDS_PER_QUERY).forEach { slice ->
+            repositories.transactionTemplate.execute {
+                repositories.seriesMetadataRepository.delete(slice)
+                repositories.bookMetadataAggregationRepository.delete(slice)
+                repositories.seriesRepository.delete(slice)
+            }
         }
+    }
+
+    private companion object {
+        /** Comfortably under SQLite's bound-parameter limit. */
+        const val IDS_PER_QUERY = 500
     }
 }

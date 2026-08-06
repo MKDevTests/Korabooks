@@ -8,12 +8,12 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlin.time.Instant
 
-// Point at MKDevTests/Kora (this fork) rather than the upstream
-// eserero/Sipurra. Upstream releases ship the original Komelia/Sipurra
-// APK, which would clobber every Kora-specific feature on update. The
-// scripts/release-kora.sh helper publishes tagged releases here that
-// the in-app auto-updater can safely consume.
-private const val komeliaBaseUrl = "https://api.github.com/repos/MKDevTests/Kora"
+// Point at MKDevTests/Korabooks, not at Kora and not at the upstream
+// eserero/Sipurra. All three ship an APK under the same updater, and a
+// release from the wrong one would replace a Calibre library reader with a
+// manga client. scripts/release-korabooks.sh publishes the tagged releases
+// this reads.
+private const val komeliaBaseUrl = "https://api.github.com/repos/MKDevTests/Korabooks"
 private const val onnxRuntimeBaseUrl = "https://api.github.com/repos/microsoft/onnxruntime"
 
 class UpdateClient(

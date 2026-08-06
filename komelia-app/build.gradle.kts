@@ -128,7 +128,7 @@ android {
         applicationId = "io.github.mkdevtests.korabooks"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
-        manifestPlaceholders["appLabel"] = "Kora"
+        manifestPlaceholders["appLabel"] = "Korabooks"
         versionCode = 1
         versionName = libs.versions.app.version.get()
 
@@ -186,7 +186,7 @@ android {
     buildTypes {
         debug {
             applicationIdSuffix = ".debug"
-            manifestPlaceholders["appLabel"] = "KoraDebug"
+            manifestPlaceholders["appLabel"] = "KorabooksDebug"
         }
         release {
             // Public release: NON-debuggable.
@@ -233,7 +233,7 @@ android {
         create("releaseTest") {
             initWith(getByName("release"))
             applicationIdSuffix = ".r8test"
-            manifestPlaceholders["appLabel"] = "KoraR8"
+            manifestPlaceholders["appLabel"] = "KorabooksR8"
             isDebuggable = false
             signingConfig = signingConfigs.getByName("debug")
             matchingFallbacks += "release"

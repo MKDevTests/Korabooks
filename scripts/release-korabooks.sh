@@ -1,5 +1,5 @@
 #!/bin/bash
-# Cut a Kora release and publish it on github.com/MKDevTests/Kora so the
+# Cut a Korabooks release and publish it on github.com/MKDevTests/Korabooks so the
 # in-app auto-updater can pick it up.
 #
 # Steps performed (in order):
@@ -10,14 +10,14 @@
 #   4. Commit the version bump on the current branch (must be main).
 #   5. Tag the commit with v<version>.
 #   6. Push the branch + tag to origin.
-#   7. Create a GitHub release on MKDevTests/Kora with the signed APK
+#   7. Create a GitHub release on MKDevTests/Korabooks with the signed APK
 #      attached.
 #
 # If any step fails, the version bump is reverted (and the local tag, if it
 # was created, is deleted) so the working tree is clean for a retry.
 #
 # Usage:
-#   ./scripts/release-kora.sh <version> [notes-or-path]
+#   ./scripts/release-korabooks.sh <version> [notes-or-path]
 #
 #     <version>        Semantic version like 2.3.0 (no 'v' prefix — the
 #                      script adds it for the tag).
@@ -27,7 +27,7 @@
 #
 # Requirements:
 #   - Must be on branch 'main' with a clean working tree.
-#   - GitHub CLI (gh) installed and authenticated to push to MKDevTests/Kora.
+#   - GitHub CLI (gh) installed and authenticated to push to MKDevTests/Korabooks.
 #   - Same Android SDK / debug.keystore setup that build-kora-release.sh
 #     already depends on.
 
@@ -124,7 +124,7 @@ if git rev-parse "$TAG" >/dev/null 2>&1; then
 fi
 
 if git ls-remote --tags origin "refs/tags/$TAG" 2>/dev/null | grep -q "$TAG"; then
-    echo "ERROR: tag '$TAG' already exists on origin (MKDevTests/Kora). Pick a new version." >&2
+    echo "ERROR: tag '$TAG' already exists on origin (MKDevTests/Korabooks). Pick a new version." >&2
     exit 1
 fi
 
@@ -266,7 +266,7 @@ echo "==> Release APK ready: $RELEASE_APK ($(du -h "$RELEASE_APK" | cut -f1))"
 echo "==> Committing and tagging $TAG"
 git add "$VERSIONS_TOML" "$APP_VERSION_KT" "$BUILD_GRADLE_KTS"
 git commit -m "chore(release): $TAG"
-git tag -a "$TAG" -m "Kora $TAG"
+git tag -a "$TAG" -m "Korabooks $TAG"
 
 # ----- push branch + tag -----
 echo "==> Pushing main and $TAG to origin"
@@ -278,13 +278,13 @@ git push origin "$TAG"
 trap - ERR
 
 # ----- create GitHub release -----
-echo "==> Creating GitHub release on MKDevTests/Kora"
+echo "==> Creating GitHub release on MKDevTests/Korabooks"
 
 GH_ARGS=(
     release create "$TAG"
     "$RELEASE_APK"
-    --repo MKDevTests/Kora
-    --title "Kora $TAG"
+    --repo MKDevTests/Korabooks
+    --title "Korabooks $TAG"
 )
 
 if [[ -n "$NOTES_ARG" ]]; then
@@ -301,8 +301,8 @@ gh "${GH_ARGS[@]}"
 echo ""
 echo "==> Release $TAG published."
 echo "    APK:  $RELEASE_APK"
-echo "    URL:  https://github.com/MKDevTests/Kora/releases/tag/$TAG"
+echo "    URL:  https://github.com/MKDevTests/Korabooks/releases/tag/$TAG"
 echo ""
-echo "Users running an earlier Kora will see this release the next time"
+echo "Users running an earlier Korabooks will see this release the next time"
 echo "their app checks for updates (settings → Updates → Check for updates,"
 echo "or on startup if they have that toggle on)."

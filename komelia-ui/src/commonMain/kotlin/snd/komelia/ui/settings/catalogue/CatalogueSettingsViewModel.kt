@@ -120,6 +120,21 @@ class CatalogueSettingsViewModel(
         }
     }
 
+    /**
+     * Carries on with the grouping a stopped sync did not finish.
+     *
+     * The grouping pass is one request per series and thousands of them, and a
+     * server that answers one at a time turns that into hours. Starting over
+     * was the only way back into it, so an interrupted sync meant paying the
+     * whole thing again — this one leaves alone every shelf already grouped.
+     */
+    fun resumeSync() {
+        guarded {
+            catalogue.save(url, username, password)
+            catalogue.startSync(resume = true)
+        }
+    }
+
     fun cancelSync() = catalogue.cancelSync()
 
     private fun describe(progress: OpdsSyncProgress) = when (progress) {

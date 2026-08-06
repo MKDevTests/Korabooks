@@ -136,9 +136,19 @@ class OpdsCatalogueSync(
         return OpdsSyncResult(libraryId, touched.size, added, covers)
     }
 
+    /**
+     * Reads a whole catalogue.
+     *
+     * [resume] picks the grouping pass up where a stopped one left off instead
+     * of paying for it again. It is a separate button rather than the default
+     * because the two are different questions: a resumed pass trusts what the
+     * mirror already says about a shelf, and re-reading a catalogue precisely
+     * to find out whether that is still true is what the full one is for.
+     */
     suspend fun sync(
         catalogueUrl: String,
         catalogueName: String,
+        resume: Boolean = false,
         onProgress: (OpdsSyncProgress) -> Unit = {},
     ): OpdsSyncResult {
         val libraryId = writer.library(catalogueUrl, catalogueName)
@@ -243,9 +253,20 @@ class OpdsCatalogueSync(
                 }
             }
 
+            // What a stopped pass already achieved, read once. One request per
+            // series and thousands of them is the whole cost of a sync, and a
+            // resumed pass that re-bought them would be a button that does
+            // nothing.
+            val already = if (resume) writer.groupedSeries(libraryId) else emptySet()
+            if (already.isNotEmpty()) {
+                logger.info { "OPDS resuming: ${already.size} series already grouped" }
+                kept += already
+            }
+
             walker.walkSeries(
                 rootUrl = catalogueUrl,
                 onProgress = { onProgress(OpdsSyncProgress.Grouping(it.shelves, it.books, it.current)) },
+                skip = { title -> mapper.seriesId(title) in already },
             ) { shelf -> queue.send(shelf) }
             queue.close()
             grouping.join()

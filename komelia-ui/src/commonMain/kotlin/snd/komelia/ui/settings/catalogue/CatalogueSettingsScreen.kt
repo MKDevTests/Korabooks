@@ -44,8 +44,10 @@ class CatalogueSettingsScreen : Screen {
                 Text(
                     "« Nouveautés » ne lit que ce que le catalogue a ajouté depuis la " +
                         "dernière fois, et s'arrête dès qu'il ne trouve rien de neuf. " +
-                        "« Tout resynchroniser » relit tout et regroupe les séries : " +
-                        "comptez une vingtaine de minutes. " +
+                        "« Reprendre » continue une synchronisation interrompue sans " +
+                        "relire les séries déjà regroupées. " +
+                        "« Tout resynchroniser » relit tout, y compris ce qui est déjà " +
+                        "là : comptez une requête par série, et longtemps. " +
                         "La synchronisation continue si vous quittez cet écran.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -96,6 +98,9 @@ class CatalogueSettingsScreen : Screen {
                     } else {
                         Button(onClick = vm::syncRecent, enabled = !vm.busy && vm.url.isNotBlank()) {
                             Text("Nouveautés")
+                        }
+                        TextButton(onClick = vm::resumeSync, enabled = !vm.busy && vm.url.isNotBlank()) {
+                            Text("Reprendre")
                         }
                         TextButton(onClick = vm::sync, enabled = !vm.busy && vm.url.isNotBlank()) {
                             Text("Tout resynchroniser")

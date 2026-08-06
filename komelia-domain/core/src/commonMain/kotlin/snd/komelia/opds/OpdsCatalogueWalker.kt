@@ -227,6 +227,13 @@ class OpdsCatalogueWalker(
     suspend fun walkSeries(
         rootUrl: String,
         onProgress: (OpdsWalkProgress) -> Unit = {},
+        /**
+         * Series already known, by title, so a resumed pass does not buy them
+         * twice. Asked before the request rather than after: the request *is*
+         * the cost here, and answering "we had that one" once it has been paid
+         * for would save nothing at all.
+         */
+        skip: (String) -> Boolean = { false },
         onShelf: suspend (OpdsShelf) -> Unit,
     ) {
         val root = fetch(rootUrl)
@@ -241,7 +248,7 @@ class OpdsCatalogueWalker(
         // Read in batches so the network is busy while the phone parses, then
         // emitted in order — a shelf list that jumps around as it fills is
         // worse than one that takes a moment longer.
-        val branches = branchesUnder(seriesIndex, report = report)
+        val branches = branchesUnder(seriesIndex, report = report, skip = skip)
         logger.info { "OPDS ${branches.size} series to read" }
         for (batch in branches.chunked(PARALLELISM)) {
             val fetched = coroutineScope {
@@ -306,6 +313,7 @@ class OpdsCatalogueWalker(
         url: String,
         depth: Int = 0,
         report: (String, Int) -> Unit = { _, _ -> },
+        skip: (String) -> Boolean = { false },
     ): List<Branch> {
         if (depth >= maxDepth) return emptyList()
         val index = allPages(url)
@@ -327,7 +335,16 @@ class OpdsCatalogueWalker(
         // Reading side by side also bought nothing here, the server answering
         // one request at a time whatever we asked of it.
         val catchAll = if (all.size > 1) all.filter { it.isCatchAll } else emptyList()
-        val entries = catchAll.ifEmpty { all }
+        val chosen = catchAll.ifEmpty { all }
+
+        // Below the top level only. At the top these are the letters an index
+        // divides itself by, and a library holding a book called "A" would
+        // otherwise skip the whole of A on a resumed pass — the one book that
+        // is its own shelf and the letter above it share a title, and by then
+        // a title is all we have to go on.
+        val entries = if (depth > 0) chosen.filterNot { skip(it.title) } else chosen
+        val avoided = chosen.size - entries.size
+        if (avoided > 0) logger.info { "OPDS skipping $avoided already-known shelves under $url" }
 
         // The peeks run together, and this is the whole cost of a sync.
         //
@@ -365,7 +382,7 @@ class OpdsCatalogueWalker(
                 if (peek.entries.any { it.isBook } || peek.entries.isEmpty()) {
                     found += Branch(entry.title, href, peek)
                 } else {
-                    found += branchesUnder(href, depth + 1, report)
+                    found += branchesUnder(href, depth + 1, report, skip)
                 }
             }
         }
@@ -512,3 +529,4 @@ class OpdsCatalogueWalker(
         private val AUTHOR_WORDS = listOf("auteur", "author", "autor", "verfasser")
     }
 }
+

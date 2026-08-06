@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build & install KoraDebug from the current branch.
+# Build & install Korabooks debug from the current branch.
 # Usage: ./scripts/build-kora-debug.sh [--clean]
 #
 # Run from the repo root in WSL or Git Bash.
@@ -57,10 +57,10 @@ fi
 . "$(dirname "$0")/_ensure_jni_libs.sh"
 ensure_jni_libs
 
-echo "==> Building KoraDebug APK"
+echo "==> Building Korabooks debug APK"
 "$GRADLEW" :komelia-app:assembleDebug
 
-APK="komelia-app/build/outputs/apk/debug/kora-app-debug.apk"
+APK="komelia-app/build/outputs/apk/debug/korabooks-app-debug.apk"
 [[ ! -f "$APK" ]] && APK="komelia-app/build/outputs/apk/debug/sipurra-app-debug.apk" # legacy fallback
 [[ ! -f "$APK" ]] && { echo "APK not found"; exit 1; }
 
@@ -79,7 +79,7 @@ if grep -qi microsoft /proc/version 2>/dev/null; then
     echo "    adb install -r \"$WIN_APK\""
     echo ""
     echo "Then launch with:"
-    echo "    adb shell monkey -p io.github.mkdevtests.kora.debug -c android.intent.category.LAUNCHER 1"
+    echo "    adb shell monkey -p io.github.mkdevtests.korabooks.debug -c android.intent.category.LAUNCHER 1"
     exit 0
 fi
 
@@ -98,7 +98,7 @@ if command -v "$ADB" >/dev/null 2>&1 || [[ -x "$ADB" ]]; then
             echo "==> Installing on connected device"
             "$ADB" install -r "$APK"
             echo "==> Done. Launch with:"
-            echo "    adb shell monkey -p io.github.mkdevtests.kora.debug -c android.intent.category.LAUNCHER 1"
+            echo "    adb shell monkey -p io.github.mkdevtests.korabooks.debug -c android.intent.category.LAUNCHER 1"
             ;;
         unauthorized)
             echo "Device is plugged in but unauthorized." >&2

@@ -1,4 +1,4 @@
-rootProject.name = "Komelia"
+rootProject.name = "Korabooks"
 enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")
 
 pluginManagement {

@@ -132,8 +132,8 @@ fi
 VERSIONS_TOML="gradle/libs.versions.toml"
 APP_VERSION_KT="komelia-domain/core/src/commonMain/kotlin/snd/komelia/updates/AppVersion.kt"
 BUILD_GRADLE_KTS="komelia-app/build.gradle.kts"
-SIGNED_APK="komelia-app/build/outputs/apk/release/kora-app-release-signed.apk"
-RELEASE_APK="komelia-app/build/outputs/apk/release/kora-$VERSION.apk"
+SIGNED_APK="komelia-app/build/outputs/apk/release/korabooks-app-release-signed.apk"
+RELEASE_APK="komelia-app/build/outputs/apk/release/korabooks-$VERSION.apk"
 
 for f in "$VERSIONS_TOML" "$APP_VERSION_KT" "$BUILD_GRADLE_KTS"; do
     [[ -f "$f" ]] || { echo "ERROR: $f not found. Repo layout changed?" >&2; exit 1; }

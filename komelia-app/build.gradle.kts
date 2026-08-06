@@ -16,7 +16,7 @@ group = "io.github.snd-r.komelia"
 version = libs.versions.app.version.get()
 
 base {
-    archivesName = "kora-app"
+    archivesName = "korabooks-app"
 }
 
 kotlin {
@@ -125,11 +125,11 @@ android {
         buildConfig = true
     }
     defaultConfig {
-        applicationId = "io.github.mkdevtests.kora"
+        applicationId = "io.github.mkdevtests.korabooks"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
         manifestPlaceholders["appLabel"] = "Kora"
-        versionCode = 10406
+        versionCode = 1
         versionName = libs.versions.app.version.get()
 
         val enableSelfUpdates = when (androidVariant) {

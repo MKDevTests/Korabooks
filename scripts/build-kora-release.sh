@@ -1,13 +1,13 @@
 #!/bin/bash
 # Build, sign, and install the Kora "release" APK from the current branch.
-# Optionally migrate user data from KoraDebug after install.
+# Optionally migrate user data from Korabooks debug after install.
 #
 # Usage:
 #   ./scripts/build-kora-release.sh [--clean] [--migrate]
 #
 #     --clean    gradle clean before building
-#     --migrate  copy data from KoraDebug (.kora.debug) to Kora (.kora)
-#                after install, leaving KoraDebug intact as backup
+#     --migrate  copy data from Korabooks debug (.kora.debug) to Kora (.kora)
+#                after install, leaving Korabooks debug intact as backup
 #
 # Run from the repo root in WSL or Git Bash. adb must be in PATH (or this
 # script picks up the Windows adb under /mnt/c/.../platform-tools).
@@ -140,9 +140,9 @@ fi
 echo "==> Building Kora release APK"
 "$GRADLEW" "${RELEASE_GRADLE_ARGS[@]}"
 
-UNSIGNED="komelia-app/build/outputs/apk/release/kora-app-release-unsigned.apk"
-ALIGNED="komelia-app/build/outputs/apk/release/kora-app-release-aligned.apk"
-SIGNED="komelia-app/build/outputs/apk/release/kora-app-release-signed.apk"
+UNSIGNED="komelia-app/build/outputs/apk/release/korabooks-app-release-unsigned.apk"
+ALIGNED="komelia-app/build/outputs/apk/release/korabooks-app-release-aligned.apk"
+SIGNED="komelia-app/build/outputs/apk/release/korabooks-app-release-signed.apk"
 
 # Legacy fallback if archivesName change hasn't propagated
 [[ ! -f "$UNSIGNED" && -f "komelia-app/build/outputs/apk/release/sipurra-app-release-unsigned.apk" ]] && \
@@ -166,7 +166,7 @@ echo "==> APK ready: $SIGNED ($(du -h "$SIGNED" | cut -f1))"
 
 # ----- install -----
 REL_PKG=io.github.mkdevtests.kora
-DEBUG_PKG=io.github.mkdevtests.kora.debug
+DEBUG_PKG=io.github.mkdevtests.korabooks.debug
 
 # In WSL, adb interop with Windows USB devices is unreliable: adb.exe
 # invoked from WSL doesn't see the device the Windows-side adb server
@@ -212,13 +212,13 @@ if ! adb install -r "$SIGNED" 2>&1; then
     exit 1
 fi
 
-# ----- migrate from KoraDebug if asked -----
+# ----- migrate from Korabooks debug if asked -----
 if [[ $MIGRATE == 1 ]]; then
     echo ""
     echo "==> Migrate: $DEBUG_PKG -> $REL_PKG"
 
     if ! adb shell "run-as $DEBUG_PKG echo ok" >/dev/null 2>&1; then
-        echo "Cannot run-as $DEBUG_PKG. Is KoraDebug installed and debuggable? Skipping migration."
+        echo "Cannot run-as $DEBUG_PKG. Is Korabooks debug installed and debuggable? Skipping migration."
         exit 0
     fi
 
@@ -245,7 +245,7 @@ if [[ $MIGRATE == 1 ]]; then
     adb shell "run-as $REL_PKG ls files" | head -8
 
     echo ""
-    echo "==> Migration done. KoraDebug ($DEBUG_PKG) left intact as backup."
+    echo "==> Migration done. Korabooks debug ($DEBUG_PKG) left intact as backup."
 fi
 
 echo ""

@@ -48,16 +48,10 @@ import snd.komelia.ui.settings.authactivity.AuthenticationActivityScreen
 import snd.komelia.ui.settings.epub.EpubReaderSettingsScreen
 import snd.komelia.ui.settings.transcription.TranscriptionSettingsScreen
 import snd.komelia.ui.settings.imagereader.ImageReaderSettingsScreen
-import snd.komelia.ui.settings.komf.general.KomfSettingsScreen
-import snd.komelia.ui.settings.komf.jobs.KomfJobsScreen
-import snd.komelia.ui.settings.komf.notifications.KomfNotificationSettingsScreen
-import snd.komelia.ui.settings.komf.processing.KomfProcessingSettingsScreen
-import snd.komelia.ui.settings.komf.providers.KomfProvidersSettingsScreen
 import snd.komelia.ui.settings.offline.OfflineSettingsScreen
 import snd.komelia.ui.settings.server.ServerSettingsScreen
 import snd.komelia.ui.settings.updates.AppUpdatesScreen
 import snd.komelia.ui.settings.users.UsersScreen
-import snd.komf.api.MediaServer.KOMGA
 import snd.komga.client.user.KomgaUser
 import snd.webview.webviewIsAvailable
 import snd.komelia.ui.LocalStrings
@@ -72,7 +66,6 @@ private data class NavEntry(
 @Composable
 fun SettingsNavigationMenu(
     hasMediaErrors: Boolean,
-    komfEnabled: Boolean,
     updatesEnabled: Boolean,
     newVersionIsAvailable: Boolean,
     currentScreen: Screen,

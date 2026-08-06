@@ -17,7 +17,6 @@ import snd.komelia.komga.api.KomgaBookApi
 import snd.komelia.komga.api.KomgaUserApi
 import snd.komelia.offline.settings.OfflineSettingsRepository
 import snd.komelia.settings.SecretsRepository
-import snd.komelia.ui.komf.KomfMainScreen
 import snd.komelia.ui.login.LoginScreen
 import snd.komelia.ui.platform.PlatformType
 import snd.komelia.ui.platform.PlatformType.DESKTOP
@@ -43,13 +42,11 @@ class SettingsNavigationViewModel(
     private val platformType: PlatformType,
     val updatesEnabled: Boolean,
     val user: StateFlow<KomgaUser?>,
-    komfEnabled: Flow<Boolean>,
 ) : ScreenModel {
     var hasMediaErrors by mutableStateOf(false)
         private set
     var newVersionIsAvailable by mutableStateOf(false)
         private set
-    val komfEnabledFlow = komfEnabled.stateIn(screenModelScope, Eagerly, false)
 
     suspend fun initialize() {
         appNotifications.runCatchingToNotifications {
@@ -79,9 +76,12 @@ class SettingsNavigationViewModel(
             secretsRepository.deleteCookie(currentServerUrl.first())
             komgaSharedState.reset()
 
+            // WEB_KOMF used to land on Komf's own web interface, which no
+            // longer exists here. The platform value itself is still wired
+            // through the reader and the login flow, so it stays for now and
+            // logs out like every other one.
             when (platformType) {
-                MOBILE, DESKTOP -> rootNavigator.replaceAll(LoginScreen())
-                WEB_KOMF -> rootNavigator.replaceAll(KomfMainScreen())
+                MOBILE, DESKTOP, WEB_KOMF -> rootNavigator.replaceAll(LoginScreen())
             }
 
 

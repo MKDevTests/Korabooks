@@ -56,7 +56,6 @@ import snd.komelia.ui.Theme.ThemeType
 import snd.komelia.ui.common.components.LoadingMaxSizeIndicator
 import snd.komelia.ui.dialogs.update.UpdateDialog
 import snd.komelia.ui.dialogs.update.UpdateProgressDialog
-import snd.komelia.ui.komf.KomfMainScreen
 import snd.komelia.ui.login.LoginScreen
 import snd.komelia.ui.reader.readerScreen
 import snd.komelia.ui.platform.BackPressHandler
@@ -284,7 +283,6 @@ fun MainView(
                 LocalToaster provides notificationToaster,
                 LocalSeriesRatingsRepository provides dependencies.appRepositories.seriesRatingsRepository,
                 LocalKomgaEvents provides dependencies.komgaEvents.events,
-                LocalKomfIntegration provides dependencies.appRepositories.komfSettingsRepository.getKomfEnabled(),
                 LocalKeyEvents provides keyEvents,
                 LocalPlatform provides platformType,
                 LocalTheme provides theme,
@@ -379,8 +377,11 @@ private fun MainContent(
             // Korabooks opens on its own library. There is no server to sign
             // in to, so the first screen only unlocks the local mirror — see
             // snd.komelia.ui.startup.CatalogueStartScreen.
-            MOBILE, DESKTOP -> snd.komelia.ui.startup.CatalogueStartScreen()
-            WEB_KOMF -> KomfMainScreen()
+            // WEB_KOMF opened Komf's own web interface, which Korabooks no
+            // longer carries. The platform value is still threaded through the
+            // reader and the login flow, so it starts where the others do
+            // rather than earning a fourth code path of its own.
+            MOBILE, DESKTOP, WEB_KOMF -> snd.komelia.ui.startup.CatalogueStartScreen()
         }
     }
 

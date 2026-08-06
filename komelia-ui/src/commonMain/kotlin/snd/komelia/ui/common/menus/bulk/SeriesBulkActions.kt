@@ -33,7 +33,6 @@ import snd.komelia.ui.LocalPlanned
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Star
-import snd.komelia.ui.LocalKomfIntegration
 import snd.komelia.ui.LocalKomgaState
 import snd.komelia.ui.LocalOfflineMode
 import snd.komelia.ui.LocalViewModelFactory
@@ -42,9 +41,6 @@ import snd.komelia.ui.dialogs.collectionadd.AddToCollectionDialog
 import snd.komelia.ui.dialogs.permissions.DownloadNotificationRequestDialog
 import snd.komelia.ui.dialogs.series.edit.SeriesEditDialog
 import snd.komelia.ui.dialogs.series.editbulk.SeriesBulkEditDialog
-import snd.komf.api.KomfServerLibraryId
-import snd.komf.api.KomfServerSeriesId
-import snd.komf.client.KomfMetadataClient
 import snd.komga.client.series.KomgaSeries
 import snd.komelia.ui.LocalStrings
 
@@ -104,18 +100,6 @@ fun SeriesBulkActionDialogs(
         )
     }
 
-    if (state.showKomfIdentifyDialog) {
-        ConfirmationDialog(
-            title = LocalStrings.current.ui.komfSeriesAutoIdentify,
-            body = "${state.series.size} series will be auto-identified by Komf",
-            onDialogConfirm = {
-                coroutineScope.launch { state.actions.komfIdentify(state.series) }
-                state.showKomfIdentifyDialog = false
-            },
-            onDialogDismiss = { state.showKomfIdentifyDialog = false },
-        )
-    }
-
     if (state.showDownloadDialog) {
         var permissionRequested by remember { mutableStateOf(false) }
         DownloadNotificationRequestDialog { permissionRequested = true }
@@ -148,14 +132,13 @@ fun rememberSeriesBulkActionsState(
     val factory = LocalViewModelFactory.current
     val isOffline = LocalOfflineMode.current.collectAsState().value
     val isAdmin = LocalKomgaState.current.authenticatedUser.collectAsState().value?.roleAdmin() ?: true
-    val isKomfEnabled = LocalKomfIntegration.current.collectAsState(false).value
     val ignoreList = LocalIgnoreList.current
     val hiddenAdmin = LocalHiddenAdmin.current
     val favorites = LocalFavorites.current
     val planned = LocalPlanned.current
 
     return remember(
-        series, coroutineScope, isOffline, isAdmin, isKomfEnabled, ignoreList, hiddenAdmin, favorites, planned
+        series, coroutineScope, isOffline, isAdmin, ignoreList, hiddenAdmin, favorites, planned
     ) {
         SeriesBulkActionsState(
             series = series,
@@ -163,7 +146,6 @@ fun rememberSeriesBulkActionsState(
             coroutineScope = coroutineScope,
             isOffline = isOffline,
             isAdmin = isAdmin,
-            isKomfEnabled = isKomfEnabled,
             ignoreList = ignoreList,
             hiddenAdmin = hiddenAdmin,
             favorites = favorites,
@@ -177,7 +159,6 @@ data class SeriesBulkActionsState(
     val actions: SeriesBulkActions,
     private val coroutineScope: CoroutineScope,
     private val isOffline: Boolean,
-    private val isKomfEnabled: Boolean,
     private val isAdmin: Boolean,
     private val ignoreList: IgnoreListController? = null,
     private val hiddenAdmin: HiddenAdminController? = null,
@@ -188,7 +169,6 @@ data class SeriesBulkActionsState(
     var showEditDialog by mutableStateOf(false)
     var showDeleteDialog by mutableStateOf(false)
     var showDeleteDownloadedDialog by mutableStateOf(false)
-    var showKomfIdentifyDialog by mutableStateOf(false)
     var showDownloadDialog by mutableStateOf(false)
 
     val buttons = buildList {
@@ -239,15 +219,6 @@ data class SeriesBulkActionsState(
                     description = "Delete downloaded",
                     icon = Icons.Default.Delete,
                     onClick = { showDeleteDownloadedDialog = true }
-                )
-            )
-        }
-        if (isKomfEnabled) {
-            add(
-                BulkActionButtonData(
-                    description = "Auto-identify",
-                    icon = Icons.Default.Extension,
-                    onClick = { showKomfIdentifyDialog = true }
                 )
             )
         }
@@ -306,12 +277,10 @@ data class SeriesBulkActions(
     val delete: suspend (List<KomgaSeries>) -> Unit,
     val download: suspend (List<KomgaSeries>) -> Unit,
     val deleteDownloaded: suspend (List<KomgaSeries>) -> Unit,
-    val komfIdentify: suspend (List<KomgaSeries>) -> Unit,
 ) {
 
     constructor(
         seriesApi: KomgaSeriesApi,
-        komfClient: KomfMetadataClient,
         taskEmitter: OfflineTaskEmitter,
         notifications: AppNotifications,
     ) : this(
@@ -337,13 +306,5 @@ data class SeriesBulkActions(
         deleteDownloaded = { series ->
             series.forEach { taskEmitter.deleteSeries(it.id) }
         },
-        komfIdentify = { series ->
-            series.forEach {
-                komfClient.matchSeries(
-                    KomfServerLibraryId(it.libraryId.value),
-                    KomfServerSeriesId(it.id.value),
-                )
-            }
-        }
     )
 }

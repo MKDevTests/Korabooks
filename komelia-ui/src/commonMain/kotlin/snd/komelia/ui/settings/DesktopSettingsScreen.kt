@@ -70,7 +70,6 @@ class SettingsScreen : Screen {
                                 currentScreen = navigator.lastItem,
                                 onNavigation = { navigator.replaceAll(it) },
                                 hasMediaErrors = vm.hasMediaErrors,
-                                komfEnabled = vm.komfEnabledFlow.collectAsState().value,
                                 updatesEnabled = vm.updatesEnabled,
                                 newVersionIsAvailable = vm.newVersionIsAvailable,
                                 onLogout = vm::logout,

@@ -25,14 +25,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import snd.komelia.komga.api.model.KomeliaBook
-import snd.komelia.ui.LocalKomfIntegration
 import snd.komelia.ui.LocalKomgaState
 import snd.komelia.ui.LocalOfflineMode
 import snd.komelia.ui.LocalUseImmersiveMorphingCover
 import snd.komelia.ui.dialogs.ConfirmationDialog
 import snd.komelia.ui.dialogs.collectionadd.AddToCollectionDialog
-import snd.komelia.ui.dialogs.komf.identify.KomfIdentifyDialog
-import snd.komelia.ui.dialogs.komf.reset.KomfResetSeriesMetadataDialog
 import snd.komelia.ui.dialogs.oneshot.OneshotEditDialog
 import snd.komelia.ui.dialogs.readlistadd.AddToReadListDialog
 import snd.komga.client.series.KomgaSeries
@@ -115,32 +112,10 @@ fun OneshotActionsMenu(
                 onDismissRequest()
             })
     }
-    var showKomfDialog by remember { mutableStateOf(false) }
-    if (showKomfDialog) {
-        KomfIdentifyDialog(
-            series = series,
-            onDismissRequest = {
-                showKomfDialog = false
-                onDismissRequest()
-            }
-        )
-    }
-    var showKomfResetDialog by remember { mutableStateOf(false) }
-    if (showKomfResetDialog) {
-        KomfResetSeriesMetadataDialog(
-            series = series,
-            onDismissRequest = {
-                showKomfResetDialog = false
-                onDismissRequest()
-            }
-        )
-    }
 
     val showDropdown = derivedStateOf {
         expanded &&
                 !showDeleteDialog &&
-                !showKomfDialog &&
-                !showKomfResetDialog &&
                 !showEditDialog &&
                 !showAddToCollectionDialog &&
                 !showAddToReadListDialog
@@ -214,20 +189,6 @@ fun OneshotActionsMenu(
             )
         }
 
-        val komfIntegration = LocalKomfIntegration.current.collectAsState(false)
-        if (komfIntegration.value) {
-            DropdownMenuItem(
-                text = { Text(LocalStrings.current.ui.identifyKomf, style = MaterialTheme.typography.labelLarge) },
-                leadingIcon = { Icon(Icons.Rounded.Search, null) },
-                onClick = { showKomfDialog = true },
-            )
-
-            DropdownMenuItem(
-                text = { Text(LocalStrings.current.ui.resetMetadataKomf, style = MaterialTheme.typography.labelLarge) },
-                leadingIcon = { Icon(Icons.Rounded.Refresh, null) },
-                onClick = { showKomfResetDialog = true },
-            )
-        }
 
         if (isAdmin && !isOffline) {
             DropdownMenuItem(

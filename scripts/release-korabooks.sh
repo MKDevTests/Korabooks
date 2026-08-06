@@ -94,6 +94,7 @@ fi
 
 # WSL: prefer Windows gh.exe so we reuse the auth/config the user already
 # set up on Windows, instead of requiring a separate apt install in WSL.
+GH_IS_WINDOWS=0
 if grep -qi microsoft /proc/version 2>/dev/null; then
     for candidate in \
         "/mnt/c/Program Files/GitHub CLI/gh.exe" \
@@ -102,10 +103,27 @@ if grep -qi microsoft /proc/version 2>/dev/null; then
         if [[ -x "$candidate" ]]; then
             gh() { "$candidate" "$@"; }
             export -f gh
+            GH_IS_WINDOWS=1
             break
         fi
     done
 fi
+
+# A path gh can actually open.
+#
+# gh.exe is a Windows program: it does not know what /mnt/c means, and hands
+# back "file does not exist" for a path that is plainly there. This is what
+# swallowed the v0.2.0 release — the commit, the tag and the push all
+# succeeded, the APK was built and signed, and only the last step failed, so
+# the tag existed on GitHub with no release attached to it and the app was
+# right to see nothing new.
+winpath() {
+    if [[ "$GH_IS_WINDOWS" == "1" ]]; then
+        wslpath -w "$1"
+    else
+        echo "$1"
+    fi
+}
 
 if ! command -v gh >/dev/null 2>&1; then
     echo "ERROR: GitHub CLI (gh) not found. Install: https://cli.github.com/" >&2
@@ -282,21 +300,31 @@ echo "==> Creating GitHub release on MKDevTests/Korabooks"
 
 GH_ARGS=(
     release create "$TAG"
-    "$RELEASE_APK"
+    "$(winpath "$(realpath "$RELEASE_APK")")"
     --repo MKDevTests/Korabooks
     --title "Korabooks $TAG"
 )
 
 if [[ -n "$NOTES_ARG" ]]; then
     if [[ -f "$NOTES_ARG" ]]; then
-        GH_ARGS+=(--notes-file "$NOTES_ARG")
+        GH_ARGS+=(--notes-file "$(winpath "$(realpath "$NOTES_ARG")")")
     else
         GH_ARGS+=(--notes "$NOTES_ARG")
     fi
 fi
 # When no notes are provided, gh defaults to opening $EDITOR — fine.
 
-gh "${GH_ARGS[@]}"
+# Not under `set -e` alone: this is the last step, the trap is disarmed, and a
+# failure here used to end the script quietly with a tag on GitHub and no
+# release under it. Say so loudly enough that the next step is obvious.
+if ! gh "${GH_ARGS[@]}"; then
+    echo "" >&2
+    echo "ERROR: the release could not be created, but $TAG is already pushed." >&2
+    echo "  Nothing is lost — retry only the last step:" >&2
+    echo "    gh release create $TAG '$(winpath "$(realpath "$RELEASE_APK")")' \\" >&2
+    echo "      --repo MKDevTests/Korabooks --title 'Korabooks $TAG'" >&2
+    exit 1
+fi
 
 echo ""
 echo "==> Release $TAG published."

@@ -403,6 +403,10 @@ class LibraryViewModel(
         currentTab = SERIES
     }
 
+    fun onCardWidthChange(width: Int) {
+        screenModelScope.launch { settingsRepository.putCardWidth(width) }
+    }
+
     fun toBooksTab() {
         currentTab = BOOKS
     }

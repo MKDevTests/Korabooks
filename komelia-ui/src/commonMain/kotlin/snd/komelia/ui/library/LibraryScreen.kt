@@ -26,6 +26,7 @@ import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.TextButton
@@ -123,6 +124,7 @@ import snd.komelia.ui.readlist.ReadListScreen
 import snd.komelia.ui.book.bookScreen
 import snd.komelia.ui.reader.readerScreen
 import snd.komelia.ui.common.cards.BookImageCard
+import snd.komelia.ui.common.cards.defaultCardWidth
 import snd.komelia.ui.common.itemlist.BookLazyCardGrid
 import snd.komelia.ui.common.menus.BookMenuActions
 import snd.komelia.ui.series.list.SeriesListContent
@@ -239,7 +241,9 @@ class LibraryScreen(
                             pageSize = pageSize,
                             onPageSizeChange = onPageSizeChange,
                             sortOrder = if (vm.currentTab == SERIES) vm.seriesTabState.filterState.state.collectAsState().value.sortOrder else null,
-                            onSortChange = if (vm.currentTab == SERIES) vm.seriesTabState.filterState::onSortOrderChange else null
+                            onSortChange = if (vm.currentTab == SERIES) vm.seriesTabState.filterState::onSortOrderChange else null,
+                            cardWidth = vm.cardWidth.collectAsState().value.value.toInt(),
+                            onCardWidthChange = vm::onCardWidthChange,
                         )
                     }
 
@@ -1006,6 +1010,8 @@ fun LibraryToolBar(
     onPageSizeChange: (Int) -> Unit,
     sortOrder: LibrarySeriesTabState.SeriesSort? = null,
     onSortChange: ((LibrarySeriesTabState.SeriesSort) -> Unit)? = null,
+    cardWidth: Int = defaultCardWidth,
+    onCardWidthChange: ((Int) -> Unit)? = null,
 ) {
     var showOptionsMenu by remember { mutableStateOf(false) }
     val isAdmin = LocalKomgaState.current.authenticatedUser.collectAsState().value?.roleAdmin() ?: true
@@ -1053,6 +1059,9 @@ fun LibraryToolBar(
                         LibrarySortDropdown(sortOrder, onSortChange)
                     }
                     PageSizeSelectionDropdown(pageSize, onPageSizeChange)
+                    if (onCardWidthChange != null) {
+                        DensitySelectionDropdown(cardWidth, onCardWidthChange)
+                    }
                 }
 
                 if (library != null && (isAdmin || isOffline)) {
@@ -1076,6 +1085,44 @@ fun LibraryToolBar(
                 }
             }
         )
+    }
+}
+
+/**
+ * How much of the library fits on one screen.
+ *
+ * One control for every tab, because it is one setting: the grids of books, of
+ * series and of authors all size their cells from the same card width, and a
+ * reader who wants to see more wants to see more of everything.
+ */
+@Composable
+private fun DensitySelectionDropdown(currentWidth: Int, onChange: (Int) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    val options = listOf(
+        "Très dense" to 110,
+        "Dense" to 160,
+        "Normale" to defaultCardWidth,
+        "Large" to 320,
+    )
+    Box {
+        IconButton(onClick = { expanded = true }) {
+            Icon(Icons.Rounded.GridView, contentDescription = "Densité d'affichage")
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            options.forEach { (label, width) ->
+                DropdownMenuItem(
+                    text = { Text(label) },
+                    onClick = {
+                        onChange(width)
+                        expanded = false
+                    },
+                    modifier = if (width == currentWidth) Modifier.background(MaterialTheme.colorScheme.secondaryContainer) else Modifier,
+                    colors = if (width == currentWidth) {
+                        MenuDefaults.itemColors(textColor = MaterialTheme.colorScheme.onSecondaryContainer)
+                    } else MenuDefaults.itemColors()
+                )
+            }
+        }
     }
 }
 

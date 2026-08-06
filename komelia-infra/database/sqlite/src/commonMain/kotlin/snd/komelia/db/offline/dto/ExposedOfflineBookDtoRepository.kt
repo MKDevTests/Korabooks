@@ -524,7 +524,10 @@ class ExposedOfflineBookDtoRepository(
             deleted = this[bookTable.deleted],
             fileHash = this[bookTable.fileHash],
             oneshot = this[bookTable.oneshot],
-            downloaded = true,
+            // A mirrored catalogue holds books whose file is still on the
+            // server. The local modification date is what tells the two apart,
+            // and it stays at zero until a download writes one.
+            downloaded = this[bookTable.localFileModifiedDate] > 0,
             localFileLastModified = Instant.fromEpochSeconds(this[bookTable.localFileModifiedDate]),
             remoteFileUnavailable = this[bookTable.remoteUnavailable]
         )

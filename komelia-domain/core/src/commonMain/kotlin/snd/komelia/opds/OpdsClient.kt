@@ -3,6 +3,7 @@ package snd.komelia.opds
 import com.fleeksoft.ksoup.Ksoup
 import com.fleeksoft.ksoup.parser.Parser.Companion.xmlParser
 import io.ktor.client.HttpClient
+import io.ktor.client.call.body
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.prepareGet
@@ -95,6 +96,16 @@ class OpdsClient(
             if (!response.status.isSuccess()) throw OpdsHttpException(response.status.value, url)
             block(response)
         }
+
+    /**
+     * A small file, whole: covers, and nothing else.
+     *
+     * Failure is an absence, not an exception. A catalogue with one broken
+     * thumbnail should still sync — a missing cover costs a grey rectangle,
+     * while a thrown error would cost the library.
+     */
+    suspend fun bytes(url: String): ByteArray? =
+        runCatching { download(url) { it.body<ByteArray>() } }.getOrNull()
 
     @OptIn(ExperimentalEncodingApi::class)
     private fun io.ktor.client.request.HttpRequestBuilder.authorize() {

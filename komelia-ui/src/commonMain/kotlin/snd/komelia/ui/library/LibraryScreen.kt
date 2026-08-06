@@ -290,6 +290,8 @@ class LibraryScreen(
                                     onPageSizeChange = onPageSizeChange,
                                     sortOrder = if (vm.currentTab == SERIES) vm.seriesTabState.filterState.state.collectAsState().value.sortOrder else null,
                                     onSortChange = if (vm.currentTab == SERIES) vm.seriesTabState.filterState::onSortOrderChange else null,
+                                    cardWidth = vm.cardWidth.collectAsState().value.value.toInt(),
+                                    onCardWidthChange = vm::onCardWidthChange,
                                     modifier = Modifier.padding(horizontal = gridPadding)
                                 )
                                 LibraryTabChips(
@@ -806,6 +808,8 @@ private fun LibraryHeaderSection(
     onPageSizeChange: (Int) -> Unit,
     sortOrder: LibrarySeriesTabState.SeriesSort? = null,
     onSortChange: ((LibrarySeriesTabState.SeriesSort) -> Unit)? = null,
+    cardWidth: Int = defaultCardWidth,
+    onCardWidthChange: ((Int) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val notoSerif = FontFamily(Font(Res.font.NotoSerif_Bold, FontWeight.Bold))
@@ -852,6 +856,9 @@ private fun LibraryHeaderSection(
                     Spacer(Modifier.width(8.dp))
                 }
                 PageSizeSelectionDropdown(currentSize = pageSize, onPageSizeChange = onPageSizeChange)
+                if (onCardWidthChange != null) {
+                    DensitySelectionDropdown(cardWidth, onCardWidthChange)
+                }
             }
         }
         if (totalCount > 0) {

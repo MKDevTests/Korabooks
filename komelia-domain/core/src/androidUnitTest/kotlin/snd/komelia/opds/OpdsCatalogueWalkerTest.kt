@@ -173,7 +173,8 @@ class OpdsCatalogueWalkerTest {
         val catalogue = mapOf(
             "/opds" to feed(listOf(nav("Auteurs", "/opds/author"))),
             "/opds/author" to feed(listOf(nav("Anonyme", "/opds/author/1"))),
-            "/opds/author/1" to feed(listOf(book("b1", "Un"), book("b2", "Deux"))),
+            "/opds/author/1" to feed(listOf(book("b1", "Un")), next = "/opds/author/1?page=2"),
+            "/opds/author/1?page=2" to feed(listOf(book("b2", "Deux"))),
         )
         val seen = mutableListOf<OpdsWalkProgress>()
 
@@ -183,7 +184,10 @@ class OpdsCatalogueWalkerTest {
         // count — without it the screen sits silent through the longest part of
         // a real sync.
         assertTrue(seen.any { it.books == 0 }, "the index descent is announced")
+        // One report per page, not per book: a page is what a request brings
+        // back, and reporting each of sixty books would say the same thing
+        // sixty times.
         assertEquals(listOf(1, 2), seen.map { it.books }.filter { it > 0 })
-        assertEquals("Deux", seen.last().current)
+        assertEquals("Anonyme", seen.last().current)
     }
 }

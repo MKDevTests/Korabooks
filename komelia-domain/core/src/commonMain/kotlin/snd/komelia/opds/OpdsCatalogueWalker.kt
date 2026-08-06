@@ -46,74 +46,27 @@ class OpdsCatalogueWalker(
     private val maxDepth: Int = 4,
 ) {
 
-    /** Collects the whole catalogue. Fine for a test, ruinous for a real one. */
-    suspend fun walk(rootUrl: String, onProgress: (OpdsWalkProgress) -> Unit = {}): List<OpdsShelf> =
-        buildList { walk(rootUrl, onProgress) { add(it) } }
-
     /**
-     * Emits each shelf as it is found.
+     * Every book in the catalogue, one shelf each.
      *
-     * Twenty thousand books take an hour to read whatever we do, and a library
-     * that appears only at the end of that hour is a library nobody sees. Handed
-     * over one shelf at a time, it fills as it goes and stopping halfway leaves
-     * something usable.
+     * The fast half, and the one worth waiting for: an alphabetical index costs
+     * one request per page of sixty, so a twenty thousand book library is a few
+     * hundred requests rather than a few thousand. Nothing here is grouped —
+     * that is [walkSeries]' business, and it can happen later.
      */
-    suspend fun walk(
+    suspend fun walkBooks(
         rootUrl: String,
         onProgress: (OpdsWalkProgress) -> Unit = {},
         onShelf: suspend (OpdsShelf) -> Unit,
     ) {
         val root = fetch(rootUrl)
         var shelfCount = 0
-        val claimed = mutableSetOf<String>()
+        val seen = mutableSetOf<String>()
+        val report = reporter(onProgress) { shelfCount to seen.size }
 
-        suspend fun emit(shelf: OpdsShelf) {
-            shelfCount++
-            onShelf(shelf)
-        }
-
-        // Reading an index is itself a few hundred requests, and it happens
-        // before a single shelf exists to report. Without this the screen sits
-        // on the same sentence for minutes and the sync looks hung — which is
-        // exactly what it looked like the first time it ran for real.
-        var visited = 0
-        val report: (String) -> Unit = { where ->
-            visited++
-            onProgress(OpdsWalkProgress(shelfCount, claimed.size, "$where ($visited)"))
-        }
-
-        // The two recognitions are the whole risk of this class, so they are
-        // said out loud: a walk that finds a suspiciously round number of books
-        // has usually fallen back, and no other line would show it.
         logger.info {
             "OPDS root offers " + root.entries.joinToString { "${it.title} -> ${it.navigation?.href}" }
         }
-
-        val seriesIndex = root.entries.firstOrNull { it.leadsTo(SERIES_SEGMENTS, SERIES_WORDS) }?.navigation?.href
-        logger.info { "OPDS series index: ${seriesIndex ?: "not recognised"}" }
-        if (seriesIndex != null) {
-            // One request per series, and a real library has thousands of them.
-            // Read in batches so the network is busy while the phone parses,
-            // then emitted in order — a shelf list that jumps around as it
-            // fills is worse than one that takes a moment longer.
-            val entries = navigationEntries(seriesIndex, report = report)
-            for (batch in entries.chunked(PARALLELISM)) {
-                val fetched = coroutineScope {
-                    batch.map { shelf ->
-                        val href = shelf.navigation?.href
-                        async { shelf.title to (href?.let { booksOf(it) } ?: emptyList()) }
-                    }.awaitAll()
-                }
-                for ((title, books) in fetched) {
-                    if (books.isEmpty()) continue
-                    claimed += books.map { it.id }
-                    emit(OpdsShelf(title = title, entries = books))
-                    onProgress(OpdsWalkProgress(shelfCount, claimed.size, title))
-                }
-            }
-        }
-
-        logger.info { "OPDS series walk: $shelfCount shelves, ${claimed.size} books" }
 
         // An alphabetical index of every book, when the catalogue has one, is
         // both complete and cheap: twenty-six letters where the author index
@@ -132,13 +85,76 @@ class OpdsCatalogueWalker(
         for (batch in bookSources.chunked(PARALLELISM)) {
             val fetched = coroutineScope { batch.map { async { booksOf(it) } }.awaitAll() }
             for (book in fetched.flatten()) {
-                if (!claimed.add(book.id)) continue
-                emit(OpdsShelf(title = book.title, entries = listOf(book), standalone = true))
-                onProgress(OpdsWalkProgress(shelfCount, claimed.size, book.title))
+                if (!seen.add(book.id)) continue
+                shelfCount++
+                onShelf(OpdsShelf(title = book.title, entries = listOf(book), standalone = true))
+                onProgress(OpdsWalkProgress(shelfCount, seen.size, book.title))
             }
         }
+        logger.info { "OPDS books walk done: ${seen.size} books" }
+    }
 
-        logger.info { "OPDS walk done: $shelfCount shelves, ${claimed.size} books" }
+    /**
+     * The series, and which books belong to them.
+     *
+     * The slow half, and the optional one: OPDS has no series field, so
+     * membership is only known by opening every series shelf — one request per
+     * series, thousands of them in a real library. Run after [walkBooks], it
+     * regroups a library that is already there to read.
+     */
+    suspend fun walkSeries(
+        rootUrl: String,
+        onProgress: (OpdsWalkProgress) -> Unit = {},
+        onShelf: suspend (OpdsShelf) -> Unit,
+    ) {
+        val root = fetch(rootUrl)
+        var shelfCount = 0
+        var bookCount = 0
+        val report = reporter(onProgress) { shelfCount to bookCount }
+
+        val seriesIndex = root.entries.firstOrNull { it.leadsTo(SERIES_SEGMENTS, SERIES_WORDS) }?.navigation?.href
+        logger.info { "OPDS series index: ${seriesIndex ?: "not recognised"}" }
+        if (seriesIndex == null) return
+
+        // Read in batches so the network is busy while the phone parses, then
+        // emitted in order — a shelf list that jumps around as it fills is
+        // worse than one that takes a moment longer.
+        val entries = navigationEntries(seriesIndex, report = report)
+        logger.info { "OPDS ${entries.size} series to read" }
+        for (batch in entries.chunked(PARALLELISM)) {
+            val fetched = coroutineScope {
+                batch.map { shelf ->
+                    val href = shelf.navigation?.href
+                    async { shelf.title to (href?.let { booksOf(it) } ?: emptyList()) }
+                }.awaitAll()
+            }
+            for ((title, books) in fetched) {
+                if (books.isEmpty()) continue
+                shelfCount++
+                bookCount += books.size
+                onShelf(OpdsShelf(title = title, entries = books))
+                onProgress(OpdsWalkProgress(shelfCount, bookCount, title))
+            }
+        }
+        logger.info { "OPDS series walk done: $shelfCount series, $bookCount books" }
+    }
+
+    /**
+     * Reading an index is itself hundreds of requests, and all of them happen
+     * before a single shelf exists to report. Without this the screen sits on
+     * the same sentence for minutes and the sync looks hung — which is exactly
+     * what it looked like the first time it ran for real.
+     */
+    private fun reporter(
+        onProgress: (OpdsWalkProgress) -> Unit,
+        counts: () -> Pair<Int, Int>,
+    ): (String) -> Unit {
+        var visited = 0
+        return { where ->
+            visited++
+            val (shelves, books) = counts()
+            onProgress(OpdsWalkProgress(shelves, books, "$where ($visited)"))
+        }
     }
 
     /**

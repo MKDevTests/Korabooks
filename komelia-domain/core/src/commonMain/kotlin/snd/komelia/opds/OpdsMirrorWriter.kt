@@ -246,6 +246,28 @@ class OpdsMirrorWriter(private val repositories: OfflineRepositories) {
      * because a book missing from one sync is more often a server hiccup than a
      * deletion, and losing a downloaded file to a hiccup is unforgivable.
      */
+    /**
+     * Deletes the shelves left with no books, and says how many.
+     *
+     * Grouping moves a book from its own one-book shelf into a series, and the
+     * shelf it came from stays behind as an empty husk. They are found by being
+     * empty rather than predicted from what moved: a book can leave a shelf for
+     * more than one reason, and only the count knows.
+     */
+    suspend fun pruneEmptySeries(libraryId: KomgaLibraryId): Int {
+        val all = repositories.seriesRepository.findAllByLibraryId(libraryId).map { it.id }
+        if (all.isEmpty()) return 0
+        val withBooks = repositories.bookRepository.findAllBySeriesIds(all).map { it.seriesId }.toSet()
+        val empty = all.filterNot { it in withBooks }
+        if (empty.isEmpty()) return 0
+        repositories.transactionTemplate.execute {
+            repositories.seriesMetadataRepository.delete(empty)
+            repositories.bookMetadataAggregationRepository.delete(empty)
+            repositories.seriesRepository.delete(empty)
+        }
+        return empty.size
+    }
+
     suspend fun prune(libraryId: KomgaLibraryId, kept: Set<KomgaSeriesId>) {
         val stale = repositories.seriesRepository.findAllByLibraryId(libraryId)
             .map { it.id }

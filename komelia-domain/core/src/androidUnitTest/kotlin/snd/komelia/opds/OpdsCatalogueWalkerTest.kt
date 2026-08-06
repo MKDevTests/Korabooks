@@ -8,6 +8,10 @@ import kotlin.test.assertTrue
 /**
  * The catalogues here are shaped like the real ones: a series index, an author
  * index sometimes broken up by letter, and paginated feeds.
+ *
+ * The two walks are tested apart because they are two promises. Reading every
+ * book is the one a library depends on; finding which books form a series is
+ * the one that can be kept later, or not at all.
  */
 class OpdsCatalogueWalkerTest {
 
@@ -33,38 +37,52 @@ class OpdsCatalogueWalkerTest {
     private fun walkerOver(catalogue: Map<String, OpdsFeed>) =
         OpdsCatalogueWalker(fetch = { url -> catalogue[url] ?: feed(emptyList()) })
 
+    private suspend fun books(
+        catalogue: Map<String, OpdsFeed>,
+        onProgress: (OpdsWalkProgress) -> Unit = {},
+    ) = buildList { walkerOver(catalogue).walkBooks("/opds", onProgress) { add(it) } }
+
+    private suspend fun series(catalogue: Map<String, OpdsFeed>) =
+        buildList { walkerOver(catalogue).walkSeries("/opds") { add(it) } }
+
+    private val duneCatalogue = mapOf(
+        "/opds" to feed(listOf(nav("Séries", "/opds/series"), nav("Auteurs", "/opds/author"))),
+        "/opds/series" to feed(listOf(nav("Dune", "/opds/series/1"))),
+        "/opds/series/1" to feed(listOf(book("b1", "Dune"), book("b2", "Le Messie de Dune"))),
+        "/opds/author" to feed(listOf(nav("Frank Herbert", "/opds/author/1"))),
+        "/opds/author/1" to feed(listOf(book("b1", "Dune"), book("b2", "Le Messie de Dune"), book("b9", "Seul"))),
+    )
+
     @Test
-    fun booksOfASeriesStayTogetherAndKeepTheirOrder() = runTest {
-        val catalogue = mapOf(
-            "/opds" to feed(listOf(nav("Séries", "/opds/series"), nav("Auteurs", "/opds/author"))),
-            "/opds/series" to feed(listOf(nav("Dune", "/opds/series/1"))),
-            "/opds/series/1" to feed(listOf(book("b1", "Dune"), book("b2", "Le Messie de Dune"))),
-            "/opds/author" to feed(listOf(nav("Frank Herbert", "/opds/author/1"))),
-            "/opds/author/1" to feed(listOf(book("b1", "Dune"), book("b2", "Le Messie de Dune"))),
-        )
+    fun readsEveryBookOnItsOwnShelf() = runTest {
+        val shelves = books(duneCatalogue)
 
-        val shelves = walkerOver(catalogue).walk("/opds")
+        assertEquals(listOf("Dune", "Le Messie de Dune", "Seul"), shelves.map { it.title })
+        assertTrue(shelves.all { it.standalone }, "grouping is not this walk's business")
+        assertTrue(shelves.all { it.entries.size == 1 })
+    }
 
-        assertEquals(1, shelves.size, "the two books belong to one shelf")
+    @Test
+    fun readsASeriesWithItsBooksInFeedOrder() = runTest {
+        val shelves = series(duneCatalogue)
+
+        assertEquals(1, shelves.size)
         assertEquals("Dune", shelves.single().title)
         assertEquals(listOf("b1", "b2"), shelves.single().entries.map { it.id })
         assertTrue(!shelves.single().standalone)
     }
 
     @Test
-    fun aBookOutsideAnySeriesStandsAlone() = runTest {
+    fun aBookIsNeverReadTwice() = runTest {
         val catalogue = mapOf(
-            "/opds" to feed(listOf(nav("Séries", "/opds/series"), nav("Auteurs", "/opds/author"))),
-            "/opds/series" to feed(listOf(nav("Dune", "/opds/series/1"))),
-            "/opds/series/1" to feed(listOf(book("b1", "Dune"))),
-            "/opds/author" to feed(listOf(nav("Alain Damasio", "/opds/author/2"))),
-            "/opds/author/2" to feed(listOf(book("b9", "La Horde du Contrevent"))),
+            "/opds" to feed(listOf(nav("Auteurs", "/opds/author"))),
+            "/opds/author" to feed(listOf(nav("Herbert", "/opds/author/1"), nav("Anonyme", "/opds/author/2"))),
+            "/opds/author/1" to feed(listOf(book("b1", "Dune"))),
+            // The same book, reached through a second author.
+            "/opds/author/2" to feed(listOf(book("b1", "Dune"))),
         )
 
-        val shelves = walkerOver(catalogue).walk("/opds")
-
-        assertEquals(listOf("Dune", "La Horde du Contrevent"), shelves.map { it.title })
-        assertEquals(listOf(false, true), shelves.map { it.standalone })
+        assertEquals(listOf("Dune"), books(catalogue).map { it.title })
     }
 
     @Test
@@ -76,9 +94,7 @@ class OpdsCatalogueWalkerTest {
             "/opds/author/h/1" to feed(listOf(book("b1", "Dune"))),
         )
 
-        val shelves = walkerOver(catalogue).walk("/opds")
-
-        assertEquals(listOf("Dune"), shelves.map { it.title })
+        assertEquals(listOf("Dune"), books(catalogue).map { it.title })
     }
 
     @Test
@@ -90,9 +106,7 @@ class OpdsCatalogueWalkerTest {
             "/opds/author/1?page=2" to feed(listOf(book("b2", "Deux"))),
         )
 
-        val shelves = walkerOver(catalogue).walk("/opds")
-
-        assertEquals(listOf("Un", "Deux"), shelves.map { it.title })
+        assertEquals(listOf("Un", "Deux"), books(catalogue).map { it.title })
     }
 
     @Test
@@ -103,9 +117,7 @@ class OpdsCatalogueWalkerTest {
             "/opds/author/1" to feed(listOf(book("b1", "Un")), next = "/opds/author/1"),
         )
 
-        val shelves = walkerOver(catalogue).walk("/opds")
-
-        assertEquals(listOf("Un"), shelves.map { it.title })
+        assertEquals(listOf("Un"), books(catalogue).map { it.title })
     }
 
     @Test
@@ -116,10 +128,8 @@ class OpdsCatalogueWalkerTest {
             "/opds/author/1" to feed(listOf(book("b1", "Un"), book("b2", "Deux"))),
         )
 
-        val shelves = walkerOver(catalogue).walk("/opds")
-
-        assertEquals(2, shelves.size)
-        assertTrue(shelves.all { it.standalone }, "flat, but complete")
+        assertEquals(2, books(catalogue).size, "flat, but complete")
+        assertEquals(0, series(catalogue).size)
     }
 
     @Test
@@ -145,9 +155,7 @@ class OpdsCatalogueWalkerTest {
             "/opds/unreadbooks" to feed(listOf(book("b8", "Pas lu"))),
         )
 
-        val shelves = walkerOver(catalogue).walk("/opds")
-
-        assertEquals(listOf("Dune"), shelves.map { it.title })
+        assertEquals(listOf("Dune"), books(catalogue).map { it.title })
     }
 
     @Test
@@ -157,9 +165,7 @@ class OpdsCatalogueWalkerTest {
             "/opds/new" to feed(listOf(book("b1", "Un"))),
         )
 
-        val shelves = walkerOver(catalogue).walk("/opds")
-
-        assertEquals(listOf("Un"), shelves.map { it.title })
+        assertEquals(listOf("Un"), books(catalogue).map { it.title })
     }
 
     @Test
@@ -171,7 +177,7 @@ class OpdsCatalogueWalkerTest {
         )
         val seen = mutableListOf<OpdsWalkProgress>()
 
-        walkerOver(catalogue).walk("/opds") { seen += it }
+        books(catalogue) { seen += it }
 
         // Reading the index is announced too, before a single book exists to
         // count — without it the screen sits silent through the longest part of

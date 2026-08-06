@@ -74,6 +74,8 @@ class CatalogueSettingsViewModel(
                 status = when (progress) {
                     is OpdsSyncProgress.Walking ->
                         "Lecture du catalogue — ${progress.books} livres, ${progress.current}"
+                    is OpdsSyncProgress.Grouping ->
+                        "Regroupement des séries — ${progress.series}, ${progress.current}"
                     is OpdsSyncProgress.Writing ->
                         "Enregistrement ${progress.done}/${progress.total} — ${progress.current}"
                 }

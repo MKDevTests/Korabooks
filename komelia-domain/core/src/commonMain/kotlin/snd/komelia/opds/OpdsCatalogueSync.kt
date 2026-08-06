@@ -19,6 +19,9 @@ data class OpdsSyncResult(
 sealed interface OpdsSyncProgress {
     data class Walking(val shelves: Int, val books: Int, val current: String) : OpdsSyncProgress
     data class Writing(val done: Int, val total: Int, val current: String) : OpdsSyncProgress
+
+    /** The second pass: the library is already usable while this runs. */
+    data class Grouping(val series: Int, val books: Int, val current: String) : OpdsSyncProgress
 }
 
 /**
@@ -57,31 +60,54 @@ class OpdsCatalogueSync(
         var books = 0
         var covers = 0
 
-        // Written as they are found, not collected first: twenty thousand books
-        // take an hour to read whatever we do, and a library that appears only
-        // at the end of that hour is a library nobody sees.
-        walker.walk(
-            rootUrl = catalogueUrl,
-            onProgress = { onProgress(OpdsSyncProgress.Walking(it.shelves, it.books, it.current)) },
-        ) { shelf ->
+        suspend fun write(shelf: OpdsShelf, phase: (Int, String) -> OpdsSyncProgress) {
             currentCoroutineContext().ensureActive()
             val mapped = mapper.map(shelf)
-            if (mapped.books.isNotEmpty()) {
-                val coverUrls = shelf.entries.mapNotNull { entry ->
-                    entry.thumbnail?.href?.let { mapper.bookId(entry) to it }
-                }.toMap()
+            if (mapped.books.isEmpty()) return
+            val coverUrls = shelf.entries.mapNotNull { entry ->
+                entry.thumbnail?.href?.let { mapper.bookId(entry) to it }
+            }.toMap()
 
-                writer.write(mapped, coverUrls)
+            writer.write(mapped, coverUrls)
+            kept += mapped.series.id
+            books += mapped.books.size
+            covers += coverUrls.size
+            onProgress(phase(books, shelf.title))
+        }
+
+        // Books first, and each one on its own shelf. This is the half that
+        // makes a library exist: it costs a few hundred requests, and when it
+        // is done everything is there to browse and to read.
+        walker.walkBooks(
+            rootUrl = catalogueUrl,
+            onProgress = { onProgress(OpdsSyncProgress.Walking(it.shelves, it.books, it.current)) },
+        ) { shelf -> write(shelf) { count, title -> OpdsSyncProgress.Writing(count, count, title) } }
+
+        // Series afterwards, and this is the slow half: one request per series,
+        // thousands of them. Each shelf regroups books that are already in the
+        // library — the book rows keep their identity and change parent — so a
+        // grouping pass interrupted halfway leaves a library that is merely
+        // less tidy, never one that is missing something.
+        walker.walkSeries(
+            rootUrl = catalogueUrl,
+            onProgress = { onProgress(OpdsSyncProgress.Grouping(it.shelves, it.books, it.current)) },
+        ) { shelf ->
+            val mapped = mapper.map(shelf)
+            if (mapped.books.isNotEmpty()) {
+                currentCoroutineContext().ensureActive()
+                writer.write(mapped, emptyMap())
                 kept += mapped.series.id
-                books += mapped.books.size
-                covers += coverUrls.size
-                onProgress(OpdsSyncProgress.Writing(kept.size, books, shelf.title))
+                onProgress(OpdsSyncProgress.Grouping(kept.size, books, shelf.title))
             }
         }
 
         writer.prune(libraryId, kept)
-        logger.info { "OPDS sync done: ${kept.size} shelves, $books books" }
-        return OpdsSyncResult(libraryId, kept.size, books, covers)
+        // The one-book shelves whose book has just moved into a series. They
+        // were real a minute ago, which is why they are found by being empty
+        // rather than by being predicted.
+        val emptied = writer.pruneEmptySeries(libraryId)
+        logger.info { "OPDS sync done: ${kept.size - emptied} shelves, $books books" }
+        return OpdsSyncResult(libraryId, kept.size - emptied, books, covers)
     }
 
 }

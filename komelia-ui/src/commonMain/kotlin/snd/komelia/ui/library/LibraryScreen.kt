@@ -27,6 +27,8 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -495,9 +497,9 @@ class LibraryScreen(
     /**
      * The library seen as books rather than as shelves.
      *
-     * No filters yet on purpose: sorting and paging are what makes twenty
-     * thousand standalone books navigable at all, and everything else can wait
-     * until it is asked for.
+     * Search, first letter, sort: the three that make twenty thousand
+     * standalone books navigable at all. The richer filters of the series view
+     * are built on series metadata a mirrored catalogue does not have.
      */
     @Composable
     private fun BooksTab(booksTabState: LibraryBooksTabState, beforeContent: @Composable () -> Unit) {
@@ -512,6 +514,17 @@ class LibraryScreen(
 
             else -> Column(Modifier.fillMaxSize()) {
                 beforeContent()
+                OutlinedTextField(
+                    value = booksTabState.searchTerm,
+                    onValueChange = booksTabState::onSearchChange,
+                    label = { Text(LocalStrings.current.ui.search) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp),
+                )
+                LetterFilterBar(
+                    selected = booksTabState.letterFilter,
+                    onLetterClick = booksTabState::onLetterFilterChange,
+                )
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -526,6 +539,11 @@ class LibraryScreen(
                             colors = AppFilterChipDefaults.filterChipColors(),
                             border = AppFilterChipDefaults.filterChipBorder(booksTabState.sortOrder == sort),
                         )
+                    }
+                    if (booksTabState.hasActiveFilter) {
+                        TextButton(onClick = booksTabState::clearFilters) {
+                            Text(LocalStrings.current.ui.clearAll)
+                        }
                     }
                 }
                 BookLazyCardGrid(

@@ -67,6 +67,12 @@ class LibraryBooksTabState(
     var sortOrder by mutableStateOf(Sort.TITLE_ASC)
         private set
 
+    /** Jump to a letter, the only way twenty thousand titles are navigable. */
+    var letterFilter by mutableStateOf<String?>(null)
+        private set
+    var searchTerm by mutableStateOf("")
+        private set
+
     val pageLoadSize = MutableStateFlow(20)
 
     private val reloadJobsFlow = MutableSharedFlow<Unit>(1, 0, DROP_OLDEST)
@@ -111,6 +117,26 @@ class LibraryBooksTabState(
         screenModelScope.launch { load(1) }
     }
 
+    fun onLetterFilterChange(letter: String?) {
+        letterFilter = letter
+        screenModelScope.launch { load(1) }
+    }
+
+    fun onSearchChange(term: String) {
+        searchTerm = term
+        screenModelScope.launch { load(1) }
+    }
+
+    fun clearFilters() {
+        letterFilter = null
+        searchTerm = ""
+        sortOrder = Sort.TITLE_ASC
+        screenModelScope.launch { load(1) }
+    }
+
+    val hasActiveFilter: Boolean
+        get() = letterFilter != null || searchTerm.isNotBlank()
+
     fun bookMenuActions() = BookMenuActions(bookApi, notifications, screenModelScope, taskEmitter)
 
     private suspend fun load(page: Int) {
@@ -120,8 +146,15 @@ class LibraryBooksTabState(
             val response = bookApi.getBookList(
                 conditionBuilder = allOfBooks {
                     libraryId?.let { id -> library { isEqualTo(id) } }
+                    // Titles are matched on their first letter, digits sharing
+                    // the "#" bucket the way every index in this app does.
+                    when (val letter = letterFilter) {
+                        null -> {}
+                        "#" -> anyOf { ('0'..'9').forEach { d -> title { beginsWith(d.toString()) } } }
+                        else -> title { beginsWith(letter) }
+                    }
                 },
-                fullTextSearch = null,
+                fullTextSearch = searchTerm.takeIf { it.isNotBlank() },
                 pageRequest = KomgaPageRequest(
                     pageIndex = page - 1,
                     size = pageLoadSize.value,

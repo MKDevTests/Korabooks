@@ -61,6 +61,66 @@ class OpdsCatalogueSync(
     private val events: MutableSharedFlow<KomgaEvent>? = null,
 ) {
 
+    /**
+     * Only what the catalogue gained since last time.
+     *
+     * The full sync re-reads twenty thousand books to discover the four that
+     * were added, and takes twenty minutes doing it. This reads the catalogue's
+     * newest-first feed and stops at the first page it already knows entirely —
+     * a catalogue that gained nothing costs one request.
+     *
+     * It deliberately does not regroup and does not prune. Grouping is one
+     * request per series and would undo the whole point; pruning cannot be
+     * decided from a feed that was never meant to be exhaustive. Both remain
+     * the full sync's business.
+     */
+    suspend fun syncRecent(
+        catalogueUrl: String,
+        catalogueName: String,
+        onProgress: (OpdsSyncProgress) -> Unit = {},
+    ): OpdsSyncResult {
+        val libraryId = writer.library(catalogueUrl, catalogueName)
+        val mapper = OpdsMapper(libraryId = libraryId, catalogueId = catalogueUrl)
+        val walker = OpdsCatalogueWalker(fetch = { url ->
+            logger.info { "OPDS fetch $url" }
+            client.feed(url)
+        })
+
+        var added = 0
+        var covers = 0
+        val touched = mutableSetOf<KomgaSeriesId>()
+
+        walker.walkRecent(
+            rootUrl = catalogueUrl,
+            onProgress = { onProgress(OpdsSyncProgress.Walking(added, it.books, it.current)) },
+        ) { page ->
+            currentCoroutineContext().ensureActive()
+            // One shelf per book, exactly as the first pass writes them: a
+            // newly added book has no series until a full sync says otherwise.
+            val shelves = page.entries.map { entry ->
+                mapper.map(OpdsShelf(entry.title, listOf(entry), standalone = true))
+            }.filter { it.books.isNotEmpty() }
+
+            val unknown = shelves.filter { !writer.hasBook(it.books.first().id) }
+            if (unknown.isNotEmpty()) {
+                val newCovers = mutableMapOf<KomgaBookId, String>()
+                page.entries.forEach { entry ->
+                    entry.thumbnail?.href?.let { newCovers[mapper.bookId(entry)] = it }
+                }
+                writer.write(unknown, newCovers)
+                added += unknown.size
+                covers += newCovers.size
+                touched += unknown.map { it.series.id }
+                events?.emit(KomgaEvent.SeriesAdded(unknown.last().series.id, libraryId))
+                onProgress(OpdsSyncProgress.Writing(added, added, page.title))
+            }
+            unknown.isEmpty()
+        }
+
+        logger.info { "OPDS quick sync done: $added new books" }
+        return OpdsSyncResult(libraryId, touched.size, added, covers)
+    }
+
     suspend fun sync(
         catalogueUrl: String,
         catalogueName: String,

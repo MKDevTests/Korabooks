@@ -42,8 +42,11 @@ class CatalogueSettingsScreen : Screen {
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Text(
-                    "La synchronisation continue si vous quittez cet écran. " +
-                        "Revenez ici pour suivre ou arrêter.",
+                    "« Nouveautés » ne lit que ce que le catalogue a ajouté depuis la " +
+                        "dernière fois, et s'arrête dès qu'il ne trouve rien de neuf. " +
+                        "« Tout resynchroniser » relit tout et regroupe les séries : " +
+                        "comptez une vingtaine de minutes. " +
+                        "La synchronisation continue si vous quittez cet écran.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -91,8 +94,11 @@ class CatalogueSettingsScreen : Screen {
                     if (vm.syncing) {
                         Button(onClick = vm::cancelSync) { Text("Arrêter") }
                     } else {
-                        Button(onClick = vm::sync, enabled = !vm.busy && vm.url.isNotBlank()) {
-                            Text("Synchroniser")
+                        Button(onClick = vm::syncRecent, enabled = !vm.busy && vm.url.isNotBlank()) {
+                            Text("Nouveautés")
+                        }
+                        TextButton(onClick = vm::sync, enabled = !vm.busy && vm.url.isNotBlank()) {
+                            Text("Tout resynchroniser")
                         }
                     }
                     if (vm.busy || vm.syncing) CircularProgressIndicator(Modifier.padding(start = 4.dp))

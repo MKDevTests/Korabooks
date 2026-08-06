@@ -113,6 +113,9 @@ class OpdsMirrorWriter(private val repositories: OfflineRepositories) {
     suspend fun write(mapped: MappedShelf, covers: Map<KomgaBookId, String> = emptyMap()) =
         write(listOf(mapped), covers)
 
+    /** Whether the mirror already holds this book — the whole of the diff check. */
+    suspend fun hasBook(id: KomgaBookId): Boolean = repositories.bookRepository.exists(id)
+
     /**
      * Moves books into their series, and writes nothing else about them.
      *

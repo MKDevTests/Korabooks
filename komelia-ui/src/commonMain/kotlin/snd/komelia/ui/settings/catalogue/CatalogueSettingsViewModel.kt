@@ -98,6 +98,20 @@ class CatalogueSettingsViewModel(
         }
     }
 
+    /**
+     * Reads only what the catalogue added since last time.
+     *
+     * The full sync is twenty minutes for a library that usually gained three
+     * books, and nobody runs a twenty minute job to find out whether anything
+     * happened. This one costs a single request when nothing did.
+     */
+    fun syncRecent() {
+        guarded {
+            catalogue.save(url, username, password)
+            catalogue.startSync(recentOnly = true)
+        }
+    }
+
     fun cancelSync() = catalogue.cancelSync()
 
     private fun describe(progress: OpdsSyncProgress) = when (progress) {

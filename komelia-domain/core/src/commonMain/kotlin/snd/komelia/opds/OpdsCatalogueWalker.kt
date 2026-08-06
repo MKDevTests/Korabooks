@@ -9,6 +9,9 @@ import kotlinx.coroutines.sync.withLock
 
 private val logger = KotlinLogging.logger { }
 
+/** Ends a walk early without unwinding it as a failure. */
+private class StopWalk : Exception()
+
 /**
  * Requests in flight at once.
  *
@@ -116,6 +119,46 @@ class OpdsCatalogueWalker(
             }
         }
         logger.info { "OPDS books walk done: ${seen.size} books" }
+    }
+
+    /**
+     * Only what the catalogue added recently.
+     *
+     * A full walk of a real library is twenty minutes and a few hundred
+     * requests, and almost all of it re-reads books that have not moved since
+     * the last time. Calibre-Web publishes its additions newest-first at
+     * /opds/new, so a catalogue that gained nothing costs exactly one request.
+     *
+     * [stopWhenKnown] is asked about each page: it answers true once the page
+     * holds nothing new, and the walk stops there rather than paging back
+     * through the whole history.
+     */
+    suspend fun walkRecent(
+        rootUrl: String,
+        onProgress: (OpdsWalkProgress) -> Unit = {},
+        stopWhenKnown: suspend (OpdsShelf) -> Boolean,
+    ) {
+        val root = fetch(rootUrl)
+        val recentIndex = root.entries.firstOrNull { it.leadsTo(RECENT_SEGMENTS, RECENT_WORDS) }?.navigation?.href
+        logger.info { "OPDS recent index: ${recentIndex ?: "not recognised"}" }
+        if (recentIndex == null) return
+
+        var books = 0
+        try {
+            forEachPage(Branch("", recentIndex, null)) { page ->
+                val found = page.entries.filter { it.isBook }
+                if (found.isEmpty()) return@forEachPage
+                books += found.size
+                onProgress(OpdsWalkProgress(0, books, page.title ?: "nouveautés"))
+                // Returning true means the page was entirely known, and pages
+                // are newest-first: everything after it is older still.
+                if (stopWhenKnown(OpdsShelf(title = page.title ?: "", entries = found))) {
+                    logger.info { "OPDS recent walk stopped: nothing new on this page" }
+                    throw StopWalk()
+                }
+            }
+        } catch (_: StopWalk) {
+        }
     }
 
     /**
@@ -283,6 +326,7 @@ class OpdsCatalogueWalker(
         private val ALL_BOOKS_SEGMENTS = listOf("books", "letter", "alphabetical", "title", "titles")
         private val SERIES_SEGMENTS = listOf("series", "serie", "reihen")
         private val AUTHOR_SEGMENTS = listOf("author", "authors", "autor", "auteur")
+        private val RECENT_SEGMENTS = listOf("new", "recent", "latest", "neu")
 
         /**
          * Titles are the fallback, so they carry the languages a French reader
@@ -292,6 +336,7 @@ class OpdsCatalogueWalker(
          * mirror a slice of the library instead of the library.
          */
         private val SERIES_WORDS = listOf("série", "series", "serie", "reihe")
+        private val RECENT_WORDS = listOf("nouveau", "nouveauté", "recent", "récent", "new", "latest")
         private val AUTHOR_WORDS = listOf("auteur", "author", "autor", "verfasser")
     }
 }

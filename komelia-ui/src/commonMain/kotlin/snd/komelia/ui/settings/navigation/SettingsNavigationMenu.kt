@@ -310,51 +310,13 @@ fun SettingsNavigationMenu(
                 )
             }
 
-            if (isAdmin) {
-                FilteredSettingsGroup(
-                    title = LocalStrings.current.ui.komfSettings,
-                    query = query,
-                    entries = buildList {
-                        add(
-                            NavEntry(
-                                label = LocalStrings.current.ui.connection,
-                                onClick = { onNavigation(KomfSettingsScreen()) },
-                                isSelected = currentScreen is KomfSettingsScreen,
-                            )
-                        )
-                        if (komfEnabled) {
-                            add(
-                                NavEntry(
-                                    label = LocalStrings.current.ui.processing2,
-                                    onClick = { onNavigation(KomfProcessingSettingsScreen(KOMGA)) },
-                                    isSelected = currentScreen is KomfProcessingSettingsScreen,
-                                )
-                            )
-                            add(
-                                NavEntry(
-                                    label = LocalStrings.current.ui.providers,
-                                    onClick = { onNavigation(KomfProvidersSettingsScreen()) },
-                                    isSelected = currentScreen is KomfProvidersSettingsScreen,
-                                )
-                            )
-                            add(
-                                NavEntry(
-                                    label = LocalStrings.current.ui.notifications,
-                                    onClick = { onNavigation(KomfNotificationSettingsScreen()) },
-                                    isSelected = currentScreen is KomfNotificationSettingsScreen,
-                                )
-                            )
-                            add(
-                                NavEntry(
-                                    label = LocalStrings.current.ui.jobHistory,
-                                    onClick = { onNavigation(KomfJobsScreen()) },
-                                    isSelected = currentScreen is KomfJobsScreen,
-                                )
-                            )
-                        }
-                    }
-                )
-            }
+            // Komf is a metadata fetcher for manga: it reads AniList, MyAnimeList
+            // and MangaUpdates, and it talks to a Komga server. Korabooks mirrors
+            // a Calibre library over OPDS, so every one of those five screens
+            // offers to configure something that cannot happen — and five dead
+            // entries in a settings menu are five reasons to doubt the rest of
+            // it. The screens still exist and still compile; only the way in is
+            // gone, which is the whole of the change.
         }
 
         var showLogoutConfirmation by remember { mutableStateOf(false) }

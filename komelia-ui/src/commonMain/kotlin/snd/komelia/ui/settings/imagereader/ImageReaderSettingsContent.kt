@@ -20,6 +20,20 @@ import snd.komelia.ui.settings.imagereader.rapidocr.RapidOcrSettingsState
 import snd.komelia.ui.settings.imagereader.rapidocr.isRapidOcrSupported
 import snd.komelia.ui.LocalStrings
 
+/**
+ * Whether the reader's manga tooling is offered at all.
+ *
+ * Webtoon detection, speech-bubble inversion, the neural upscalers and the
+ * OCR are answers to questions a manga reader has. A Calibre library is
+ * novels and essays, and every one of these settings asks its reader to have
+ * an opinion about something that will never happen to them.
+ *
+ * A constant rather than a deletion: the screens behind it are large, they
+ * work, and Korabooks may yet grow a comics shelf. Flipping this back on is
+ * the whole cost of changing our mind.
+ */
+private const val MANGA_TOOLS_VISIBLE = false
+
 @Composable
 fun ImageReaderSettingsContent(
     loadThumbnailPreviews: Boolean,
@@ -99,26 +113,28 @@ fun ImageReaderSettingsContent(
             supportingText = { Text(LocalStrings.current.ui.whenCropBordersIsOn) },
         )
 
-        SwitchWithLabel(
-            checked = pagedAutoDetectWebtoon,
-            onCheckedChange = onPagedAutoDetectWebtoonChange,
-            label = { Text(LocalStrings.current.ui.autoDetectWebtoon) },
-            supportingText = { Text(LocalStrings.current.ui.ifTheFirst3Pages) },
-        )
+        if (MANGA_TOOLS_VISIBLE) {
+            SwitchWithLabel(
+                checked = pagedAutoDetectWebtoon,
+                onCheckedChange = onPagedAutoDetectWebtoonChange,
+                label = { Text(LocalStrings.current.ui.autoDetectWebtoon) },
+                supportingText = { Text(LocalStrings.current.ui.ifTheFirst3Pages) },
+            )
 
-        SwitchWithLabel(
-            checked = webtoonSmartScroll,
-            onCheckedChange = onWebtoonSmartScrollChange,
-            label = { Text(LocalStrings.current.ui.webtoonSmartScroll) },
-            supportingText = { Text(LocalStrings.current.ui.inTheContinuousReaderA) },
-        )
+            SwitchWithLabel(
+                checked = webtoonSmartScroll,
+                onCheckedChange = onWebtoonSmartScrollChange,
+                label = { Text(LocalStrings.current.ui.webtoonSmartScroll) },
+                supportingText = { Text(LocalStrings.current.ui.inTheContinuousReaderA) },
+            )
 
-        SwitchWithLabel(
-            checked = invertSpeechBubbles,
-            onCheckedChange = onInvertSpeechBubblesChange,
-            label = { Text(LocalStrings.current.ui.invertSpeechBubbles) },
-            supportingText = { Text(LocalStrings.current.ui.blackBubbleWhiteTextArtwork2) },
-        )
+            SwitchWithLabel(
+                checked = invertSpeechBubbles,
+                onCheckedChange = onInvertSpeechBubblesChange,
+                label = { Text(LocalStrings.current.ui.invertSpeechBubbles) },
+                supportingText = { Text(LocalStrings.current.ui.blackBubbleWhiteTextArtwork2) },
+            )
+        }
 
         SwitchWithLabel(
             checked = continuousReaderStopAtEnd,
@@ -159,7 +175,7 @@ fun ImageReaderSettingsContent(
             )
         }
 
-        if (isOnnxRuntimeSupported()) {
+        if (MANGA_TOOLS_VISIBLE && isOnnxRuntimeSupported()) {
             HorizontalDivider(Modifier.padding(vertical = 10.dp))
             OnnxRuntimeSettingsContent(
                 executionProvider = onnxRuntimeSettingsState.currentExecutionProvider,
@@ -182,7 +198,7 @@ fun ImageReaderSettingsContent(
             )
         }
 
-        if (isNcnnSupported()) {
+        if (MANGA_TOOLS_VISIBLE && isNcnnSupported()) {
             HorizontalDivider(Modifier.padding(vertical = 10.dp))
             NcnnSettingsContent(
                 settings = ncnnSettingsState.ncnnUpscalerSettings.collectAsState().value,
@@ -191,7 +207,7 @@ fun ImageReaderSettingsContent(
             )
         }
 
-        if (isRapidOcrSupported()) {
+        if (MANGA_TOOLS_VISIBLE && isRapidOcrSupported()) {
             HorizontalDivider(Modifier.padding(vertical = 10.dp))
             RapidOcrSettingsContent(
                 isDownloaded = rapidOcrSettingsState.isDownloaded.collectAsState().value,
@@ -201,7 +217,7 @@ fun ImageReaderSettingsContent(
             )
         }
 
-        if (isNcnnSupported()) {
+        if (MANGA_TOOLS_VISIBLE && isNcnnSupported()) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.End

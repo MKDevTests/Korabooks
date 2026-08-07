@@ -116,20 +116,54 @@ else
     fail "libvips.so missing → run build-kora-debug.sh or scripts/_ensure_jni_libs.sh"
 fi
 
-# ----- 6. latest SQL migration registered in AppMigrations.kt -----
-# Flyway migrations are NOT discovered from the filesystem; AppMigrations.kt
-# holds a hardcoded list. A new V##__*.sql file that isn't in the list ships
+# ----- 6. every SQL migration registered in its index -----
+# Flyway migrations are NOT discovered from the filesystem; each *Migrations.kt
+# holds a hardcoded list. A V##__*.sql file that isn't in its list ships
 # silently and crashes the app at first run with "no such column".
-MIGRATIONS_DIR="komelia-infra/database/sqlite/src/commonMain/composeResources/files/migrations/app"
-MIGRATIONS_INDEX="komelia-infra/database/sqlite/src/commonMain/kotlin/snd/komelia/db/migrations/AppMigrations.kt"
-LATEST_MIGRATION="$(ls "$MIGRATIONS_DIR"/V*.sql 2>/dev/null | sort -V | tail -1 | xargs -r basename)"
-if [[ -z "$LATEST_MIGRATION" ]]; then
-    fail "no V*.sql migrations found under $MIGRATIONS_DIR"
-elif grep -q "\"$LATEST_MIGRATION\"" "$MIGRATIONS_INDEX"; then
-    pass "latest migration $LATEST_MIGRATION is registered in AppMigrations.kt"
-else
-    fail "$LATEST_MIGRATION exists on disk but is NOT in AppMigrations.kt — add it to the migrations list"
-fi
+#
+# There are four databases, not one. This check watched only `app` for a long
+# time, which left `global`, `offline` and `tasks` completely unguarded — and
+# `offline` is where the genre whitelist landed. Every file is checked, not just
+# the newest: the "latest only" version passed happily while an older sibling
+# was missing from the list.
+MIGRATIONS_ROOT="komelia-infra/database/sqlite/src/commonMain/composeResources/files/migrations"
+MIGRATIONS_KT="komelia-infra/database/sqlite/src/commonMain/kotlin/snd/komelia/db/migrations"
+for pair in "app:AppMigrations.kt" "global:GlobalMigrations.kt" \
+            "offline:OfflineMigrations.kt" "tasks:OfflineTasksMigrations.kt"; do
+    base="${pair%%:*}"
+    index="$MIGRATIONS_KT/${pair#*:}"
+    dir="$MIGRATIONS_ROOT/$base"
+
+    # A database may legitimately have no migration directory yet.
+    if [[ ! -d "$dir" ]]; then
+        pass "no $base migrations directory (nothing to register)"
+        continue
+    fi
+    if [[ ! -f "$index" ]]; then
+        fail "$dir exists but its index $index does not"
+        continue
+    fi
+
+    files="$(ls "$dir"/V*.sql 2>/dev/null | xargs -r -n1 basename)"
+    if [[ -z "$files" ]]; then
+        fail "no V*.sql migrations found under $dir"
+        continue
+    fi
+
+    missing=""
+    count=0
+    while read -r f; do
+        [[ -z "$f" ]] && continue
+        count=$((count + 1))
+        grep -q "\"$f\"" "$index" || missing="$missing $f"
+    done <<< "$files"
+
+    if [[ -z "$missing" ]]; then
+        pass "$count $base migration(s) all registered in $(basename "$index")"
+    else
+        fail "$base migration(s) on disk but NOT in $(basename "$index"):$missing"
+    fi
+done
 
 # ----- 7. AppVersion.kt vs gradle/libs.versions.toml consistency -----
 APP_VERSION_KT="komelia-domain/core/src/commonMain/kotlin/snd/komelia/updates/AppVersion.kt"

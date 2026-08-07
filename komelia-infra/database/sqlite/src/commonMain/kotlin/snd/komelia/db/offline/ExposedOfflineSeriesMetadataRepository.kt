@@ -68,8 +68,14 @@ class ExposedOfflineSeriesMetadataRepository(
                     this[OfflineSeriesMetadataGenreTable.genre] = genre
                 }
             }
+            // Tags, not genres. The guard tested `tags` while the loop walked
+            // `genres`, so the tag table was filled with genres and the real
+            // tags were dropped — and a series with tags but no genres wrote
+            // nothing at all. Invisible on an OPDS catalogue, whose
+            // `<category>` only ever feeds genres, which is why it survived:
+            // the table was simply always empty.
             if (metadata.tags.isNotEmpty()) {
-                OfflineSeriesMetadataTagTable.batchInsert(metadata.genres) { tag ->
+                OfflineSeriesMetadataTagTable.batchInsert(metadata.tags) { tag ->
                     this[OfflineSeriesMetadataTagTable.seriesId] = metadata.seriesId.value
                     this[OfflineSeriesMetadataTagTable.tag] = tag
                 }

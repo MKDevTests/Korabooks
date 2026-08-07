@@ -21,6 +21,7 @@ import snd.komelia.ui.book.bookScreen
 import snd.komelia.ui.collection.CollectionScreen
 import snd.komelia.ui.common.components.ErrorContent
 import snd.komelia.ui.library.LibraryScreen
+import snd.komelia.ui.navigation.pushOrReturnTo
 import snd.komelia.ui.oneshot.OneshotScreen
 import snd.komelia.ui.platform.BackPressHandler
 import snd.komelia.ui.platform.ScreenPullToRefreshBox
@@ -106,9 +107,9 @@ class SeriesScreen(
                 series = series,
                 library = vm.library.collectAsState().value,
                 accentColor = LocalAccentColor.current,
-                onLibraryClick = { navigator.push(LibraryScreen(it.id)) },
+                onLibraryClick = { navigator.pushOrReturnTo(LibraryScreen(it.id)) },
                 seriesMenuActions = vm.seriesMenuActions(),
-                onFilterClick = { filter -> navigator.push(LibraryScreen(series.libraryId, filter)) },
+                onFilterClick = { filter -> navigator.pushOrReturnTo(LibraryScreen(series.libraryId, filter)) },
                 currentTab = vm.currentTab,
                 onTabChange = vm::onTabChange,
                 booksState = vm.booksState,
@@ -136,7 +137,7 @@ class SeriesScreen(
                     // twice and crashes. A reading-order graph always contains
                     // the current series, and its box is clickable like any
                     // other.
-                    if (target != seriesId) navigator.push(SeriesScreen(target))
+                    if (target != seriesId) navigator.pushOrReturnTo(SeriesScreen(target))
                 },
                 similarState = vm.similarState,
                 onCollectionClick = { navigator.push(CollectionScreen(it.id)) },
@@ -185,11 +186,11 @@ class SeriesScreen(
                     SeriesContent(
                         series = vm.series.collectAsState().value,
                         library = vm.library.collectAsState().value,
-                        onLibraryClick = { navigator.push(LibraryScreen(it.id)) },
+                        onLibraryClick = { navigator.pushOrReturnTo(LibraryScreen(it.id)) },
                         seriesMenuActions = vm.seriesMenuActions(),
                         onFilterClick = { filter ->
                             val series = requireNotNull(vm.series.value)
-                            navigator.push(LibraryScreen(series.libraryId, filter))
+                            navigator.pushOrReturnTo(LibraryScreen(series.libraryId, filter))
                         },
 
                         currentTab = vm.currentTab,
@@ -237,7 +238,7 @@ class SeriesScreen(
                         },
                         otherVersions = vm.linksState.otherVersions,
                         onVersionClick = { target ->
-                            if (target != seriesId) navigator.push(SeriesScreen(target))
+                            if (target != seriesId) navigator.pushOrReturnTo(SeriesScreen(target))
                         },
                         onRandomSiblingClick = {
                             vm.openRandomSiblingSeries { newSeries ->

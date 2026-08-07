@@ -109,6 +109,7 @@ import snd.komelia.ui.home.HomeScreen
 import snd.komelia.ui.library.LibraryScreen
 import snd.komelia.ui.reader.ReaderExitDestination
 import snd.komelia.ui.reader.ReaderNavigationIntent
+import snd.komelia.ui.navigation.pushOrReturnTo
 import snd.komelia.ui.oneshot.OneshotScreen
 import snd.komelia.ui.platform.PlatformType.DESKTOP
 import snd.komelia.ui.platform.PlatformType.MOBILE
@@ -192,15 +193,11 @@ class MainScreen(
             // It posts an intent + pops itself; we handle the push here on the inner nav.
             LaunchedEffect(Unit) {
                 ReaderNavigationIntent.pending.collect { intent ->
-                    // Build the destination, then avoid creating a DUPLICATE
-                    // navigator key. The reader lives on the parent navigator and
-                    // pops itself; we navigate on the inner nav here. When the user
-                    // opened the reader FROM this series (or via series -> book), a
-                    // screen with the same key is already on the inner stack, and
-                    // pushing it again throws "Key <id>:screen was used multiple
-                    // times" (SaveableStateHolder, surfaced by the AnimatedContent
-                    // cross-fade). popUntil reuses the existing instance; we only
-                    // push when the destination is genuinely not on the stack.
+                    // The reader lives on the parent navigator and pops itself; we
+                    // navigate on the inner nav here. pushOrReturnTo carries the
+                    // duplicate-key guard that used to be written out inline just
+                    // here — see its documentation for why pushing twice kills the
+                    // app rather than opening a second page.
                     val destination = when (intent) {
                         is ReaderExitDestination.Series -> SeriesScreen(intent.id)
                         is ReaderExitDestination.Library -> LibraryScreen(intent.id)
@@ -208,11 +205,7 @@ class MainScreen(
                     }
                     if (destination != null) {
                         ReaderNavigationIntent.pending.value = null
-                        if (navigator.items.any { it.key == destination.key }) {
-                            navigator.popUntil { it.key == destination.key }
-                        } else {
-                            navigator.push(destination)
-                        }
+                        navigator.pushOrReturnTo(destination)
                     }
                 }
             }

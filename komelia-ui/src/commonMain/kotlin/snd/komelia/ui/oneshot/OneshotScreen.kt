@@ -21,6 +21,7 @@ import snd.komelia.ui.collection.CollectionScreen
 import snd.komelia.ui.common.components.ErrorContent
 import snd.komelia.ui.common.components.LoadingMaxSizeIndicator
 import snd.komelia.ui.library.LibraryScreen
+import snd.komelia.ui.navigation.pushOrReturnTo
 import snd.komelia.ui.platform.BackPressHandler
 import snd.komelia.ui.platform.ScreenPullToRefreshBox
 import snd.komelia.ui.reader.readerScreen
@@ -88,7 +89,7 @@ class OneshotScreen(
                 book = vmBook,
                 library = vmLibrary,
                 accentColor = LocalAccentColor.current,
-                onLibraryClick = { navigator.push(LibraryScreen(it.id)) },
+                onLibraryClick = { navigator.pushOrReturnTo(LibraryScreen(it.id)) },
                 onBookReadClick = { markReadProgress ->
                     val currentBook = vm.book.value ?: return@ImmersiveOneshotContent
                     navigator.parent?.push(
@@ -148,7 +149,7 @@ class OneshotScreen(
                     series = series,
                     book = book,
                     library = library,
-                    onLibraryClick = { navigator.push(LibraryScreen(it.id)) },
+                    onLibraryClick = { navigator.pushOrReturnTo(LibraryScreen(it.id)) },
                     onBookReadClick = { markReadProgress ->
                         navigator.parent?.push(
                             readerScreen(

@@ -52,6 +52,7 @@ import androidx.compose.material3.TextButton
 import snd.komelia.ui.LoadState
 import snd.komelia.ui.LocalKomgaState
 import snd.komelia.ui.LocalLibraries
+import snd.komelia.ui.navigation.pushOrReturnTo
 import snd.komelia.ui.settings.maintenance.MaintenanceScreen
 import snd.komelia.ui.LocalRawStatusBarHeight
 import snd.komelia.ui.LocalViewModelFactory
@@ -198,7 +199,7 @@ class NextReleasesScreen : Screen {
                                     NextReleaseRow(release = release) {
                                         // SeriesScreen resolves the full series (incl. the
                                         // oneshot check + self-redirect) from the id alone.
-                                        navigator.push(SeriesScreen(release.seriesId))
+                                        navigator.pushOrReturnTo(SeriesScreen(release.seriesId))
                                     }
                                 }
                             }

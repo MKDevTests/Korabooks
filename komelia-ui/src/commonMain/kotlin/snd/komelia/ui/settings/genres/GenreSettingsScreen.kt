@@ -71,6 +71,10 @@ class GenreSettingsScreen : Screen {
         }
 
         var filter by remember { mutableStateOf("") }
+        // Folded by default: the file picker is the gesture that works on the
+        // device, and an always-open textarea would push the list down for a
+        // field only the desktop can use.
+        var pasteOpen by remember { mutableStateOf(false) }
         // Families start folded: fifty-eight rows fit on a screen, two hundred
         // and fourteen do not. Only what the reader opens is composed, which is
         // also what keeps a plain Column affordable inside a scrolling parent.
@@ -117,6 +121,46 @@ class GenreSettingsScreen : Screen {
                         modifier = Modifier.padding(10.dp),
                     )
                 }
+
+                // Above the list, not below it. Below, it sat behind whatever
+                // the list happens to be — and the list is the problem this
+                // screen exists to solve: eleven hundred genres of a mirror
+                // synced before the library was tidied. The one action that
+                // fixes all of it in a single gesture cannot be the one you have
+                // to scroll past the mess to reach.
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Button(onClick = { listPicker.launch() }) {
+                        Text("Importer une liste…")
+                    }
+                    TextButton(onClick = { pasteOpen = !pasteOpen }) {
+                        Text(if (pasteOpen) "Masquer le collage" else "…ou coller")
+                    }
+                }
+                Text(
+                    "Un genre par ligne, ou séparés par des virgules. Les genres que le " +
+                        "miroir ne connaît pas encore sont conservés et s'appliqueront " +
+                        "après une synchronisation complète.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (pasteOpen) {
+                    OutlinedTextField(
+                        value = vm.pasted,
+                        onValueChange = vm::onPastedChange,
+                        label = { Text("Coller la liste ici") },
+                        minLines = 3,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    TextButton(onClick = vm::applyPasted, enabled = vm.pasted.isNotBlank()) {
+                        Text("Cocher les genres de la liste")
+                    }
+                }
+
+                HorizontalDivider()
 
                 OutlinedTextField(
                     value = filter,
@@ -235,35 +279,6 @@ class GenreSettingsScreen : Screen {
                     }
                 }
 
-                HorizontalDivider()
-
-                // Importing beats pasting on a tablet, where there is no way to
-                // get two hundred lines into a text field. File() opens the
-                // document picker rather than the media gallery, so a .txt
-                // dropped in Download is actually reachable — and no extension
-                // filter, because filtering maps extensions to MIME types and
-                // hides files that are right there.
-                Text(
-                    "Vous tenez déjà votre liste ailleurs ? Importez-la : un genre par " +
-                        "ligne, ou séparés par des virgules. Les genres que le miroir ne " +
-                        "connaît pas encore sont conservés et s'appliqueront après une " +
-                        "synchronisation complète.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                TextButton(onClick = { listPicker.launch() }) {
-                    Text("Importer un fichier…")
-                }
-                OutlinedTextField(
-                    value = vm.pasted,
-                    onValueChange = vm::onPastedChange,
-                    label = { Text("…ou coller la liste ici") },
-                    minLines = 3,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                TextButton(onClick = vm::applyPasted, enabled = vm.pasted.isNotBlank()) {
-                    Text("Cocher les genres de la liste")
-                }
                 }
             }
         }

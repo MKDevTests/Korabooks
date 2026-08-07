@@ -1,6 +1,11 @@
 package snd.komelia.ui.settings.genres
 
 import androidx.compose.foundation.clickable
+import io.github.vinceglb.filekit.dialogs.FileKitMode
+import io.github.vinceglb.filekit.dialogs.FileKitType
+import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
+import io.github.vinceglb.filekit.readBytes
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -27,6 +32,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -55,6 +61,14 @@ class GenreSettingsScreen : Screen {
         val viewModelFactory = LocalViewModelFactory.current
         val vm = rememberScreenModel { viewModelFactory.getGenreSettingsViewModel() }
         LaunchedEffect(Unit) { vm.initialize() }
+
+        val scope = rememberCoroutineScope()
+        val listPicker = rememberFilePickerLauncher(
+            type = FileKitType.File(),
+            mode = FileKitMode.Single,
+        ) { file ->
+            file?.let { picked -> scope.launch { vm.applyFile(picked.readBytes()) } }
+        }
 
         var filter by remember { mutableStateOf("") }
         // Families start folded: fifty-eight rows fit on a screen, two hundred
@@ -223,13 +237,27 @@ class GenreSettingsScreen : Screen {
 
                 HorizontalDivider()
 
-                // Last, not first: the families above are the fast way in, and
-                // this field is for the reader who already keeps their list
-                // elsewhere — a note, a Calibre column.
+                // Importing beats pasting on a tablet, where there is no way to
+                // get two hundred lines into a text field. File() opens the
+                // document picker rather than the media gallery, so a .txt
+                // dropped in Download is actually reachable — and no extension
+                // filter, because filtering maps extensions to MIME types and
+                // hides files that are right there.
+                Text(
+                    "Vous tenez déjà votre liste ailleurs ? Importez-la : un genre par " +
+                        "ligne, ou séparés par des virgules. Les genres que le miroir ne " +
+                        "connaît pas encore sont conservés et s'appliqueront après une " +
+                        "synchronisation complète.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                TextButton(onClick = { listPicker.launch() }) {
+                    Text("Importer un fichier…")
+                }
                 OutlinedTextField(
                     value = vm.pasted,
                     onValueChange = vm::onPastedChange,
-                    label = { Text("Coller une liste (un genre par ligne, ou séparés par des virgules)") },
+                    label = { Text("…ou coller la liste ici") },
                     minLines = 3,
                     modifier = Modifier.fillMaxWidth(),
                 )

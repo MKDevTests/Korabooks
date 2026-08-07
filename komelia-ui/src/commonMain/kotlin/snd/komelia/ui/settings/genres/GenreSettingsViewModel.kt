@@ -133,8 +133,24 @@ class GenreSettingsViewModel(
      * how a typo looks.
      */
     fun applyPasted() {
+        applyList(pasted)
+        pasted = ""
+    }
+
+    /**
+     * The same list, read from a file instead of a text field.
+     *
+     * Because pasting is not a thing you can do on a phone. The list lives on a
+     * computer — exported from Calibre, kept in a note — and getting it into a
+     * text field on a tablet means either retyping two hundred lines or getting
+     * it into the tablet's clipboard, which nothing does. Picking a file is one
+     * gesture, and `adb push` puts the file there in one command.
+     */
+    fun applyFile(bytes: ByteArray) = applyList(bytes.decodeToString())
+
+    private fun applyList(text: String) {
         val known = allGenres.associateBy { it.lowercase() }
-        val names = pasted.split('\n', ',', ';')
+        val names = text.split('\n', ',', ';')
             .map { it.trim() }
             .filter { it.isNotEmpty() }
             .distinctBy { it.lowercase() }
@@ -146,7 +162,6 @@ class GenreSettingsViewModel(
             .partition { known.containsKey(it.lowercase()) }
 
         setAll(present + awaited, true)
-        pasted = ""
         status = buildString {
             append("${present.size} genre(s) coché(s)")
             if (awaited.isNotEmpty()) {

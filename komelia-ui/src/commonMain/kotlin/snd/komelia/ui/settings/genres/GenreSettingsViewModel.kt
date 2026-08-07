@@ -8,20 +8,42 @@ import cafe.adriel.voyager.core.model.screenModelScope
 import kotlinx.coroutines.launch
 import snd.komelia.offline.api.repository.RetainedGenreCount
 import snd.komelia.offline.api.repository.RetainedGenreRepository
+import snd.komelia.offline.api.repository.genreRoot
+
+/**
+ * A family of genres: `Fantasy` and everything written `Fantasy.*`.
+ *
+ * The group is what makes the screen usable. Two hundred and fourteen genres
+ * ticked one at a time is a chore nobody finishes; fifty-eight families with a
+ * single tick each is a decision.
+ */
+data class GenreGroup(
+    val root: String,
+    val entries: List<RetainedGenreCount>,
+    /** Series carrying any genre of this family, counted once. */
+    val seriesCount: Int,
+) {
+    /** A family of one, whose only member is the root itself: no point unfolding it. */
+    val isLeaf: Boolean get() = entries.size == 1 && entries.first().genre == root
+
+    val genres: List<String> get() = entries.map { it.genre }
+}
 
 /**
  * The genre short list, edited.
  *
- * The whole screen is one set of strings, so the state is that set plus the
- * catalogue's own genres to tick them off against. Nothing is written until
- * "Enregistrer": ticking forty boxes one save at a time would be forty
- * rewrites of the same table.
+ * Nothing is written until "Enregistrer": ticking forty boxes one save at a
+ * time would be forty rewrites of the same table.
  */
 class GenreSettingsViewModel(
     private val retainedGenres: RetainedGenreRepository,
 ) : ScreenModel {
 
-    var counts by mutableStateOf<List<RetainedGenreCount>>(emptyList())
+    var groups by mutableStateOf<List<GenreGroup>>(emptyList())
+        private set
+
+    /** Every genre the library has, flat — what the paste field matches against. */
+    var allGenres by mutableStateOf<List<String>>(emptyList())
         private set
 
     /** The genres currently ticked. Empty means "keep them all". */
@@ -49,7 +71,19 @@ class GenreSettingsViewModel(
 
     suspend fun initialize() {
         try {
-            counts = retainedGenres.findAllCounts()
+            val counts = retainedGenres.findAllCounts()
+            val byRoot = counts.genres.groupBy { genreRoot(it.genre) }
+            groups = counts.roots.map { root ->
+                GenreGroup(
+                    root = root.genre,
+                    // Inside a family, alphabetical: the root first, then its
+                    // children in a stable order. Ranking by count here would
+                    // scatter `Fantasy.*` around its own parent.
+                    entries = byRoot[root.genre].orEmpty().sortedBy { it.genre },
+                    seriesCount = root.seriesCount,
+                )
+            }
+            allGenres = counts.genres.map { it.genre }
             selected = retainedGenres.findAll()
         } catch (e: Exception) {
             error = e.message ?: e::class.simpleName ?: "échec"
@@ -58,8 +92,19 @@ class GenreSettingsViewModel(
         }
     }
 
-    fun toggle(genre: String) {
-        selected = if (genre in selected) selected - genre else selected + genre
+    fun toggle(genre: String) = setAll(listOf(genre), genre !in selected)
+
+    /**
+     * Ticks or unticks a whole family in one gesture.
+     *
+     * Partially ticked counts as unticked here, so the first press on a mixed
+     * family completes it rather than emptying it — the reader who ticked three
+     * of twelve was heading towards the family, not away from it.
+     */
+    fun toggleGroup(group: GenreGroup) = setAll(group.genres, !group.genres.all { it in selected })
+
+    fun setAll(genres: Collection<String>, checked: Boolean) {
+        selected = if (checked) selected + genres else selected - genres.toSet()
         status = null
         error = null
     }
@@ -74,22 +119,22 @@ class GenreSettingsViewModel(
      * Adds a pasted list to the ticks instead of replacing them.
      *
      * The field is there for the reader who already keeps their list somewhere
-     * else — a note, another app — and pasting it should not undo the boxes
-     * they ticked here two minutes ago. Names that the library does not have are
-     * dropped: a kept genre no series wears would just be a line that filters
-     * nothing.
+     * else — a note, a Calibre column — and pasting it should not undo the boxes
+     * they ticked here two minutes ago. Names the library does not have are
+     * reported rather than written: a kept genre no series wears would filter
+     * nothing, and silence would let a stale mirror look like a working list.
      */
     fun applyPasted() {
-        val known = counts.associateBy { it.genre.lowercase() }
+        val known = allGenres.associateBy { it.lowercase() }
         val names = pasted.split('\n', ',', ';')
             .map { it.trim() }
             .filter { it.isNotEmpty() }
         if (names.isEmpty()) return
 
-        val matched = names.mapNotNull { known[it.lowercase()]?.genre }
+        val matched = names.mapNotNull { known[it.lowercase()] }
         val unknown = names.filter { known[it.lowercase()] == null }
 
-        selected = selected + matched
+        setAll(matched, true)
         pasted = ""
         status = buildString {
             append("${matched.size} genre(s) ajouté(s)")
@@ -101,11 +146,7 @@ class GenreSettingsViewModel(
         }
     }
 
-    fun clear() {
-        selected = emptySet()
-        status = null
-        error = null
-    }
+    fun clear() = setAll(allGenres, false)
 
     fun save() {
         screenModelScope.launch {

@@ -1,19 +1,27 @@
 package snd.komelia.ui.settings.genres
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TriStateCheckbox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -22,6 +30,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.core.screen.Screen
@@ -33,8 +44,9 @@ import snd.komelia.ui.settings.SettingsScreenContainer
  * Which genres are worth having in a filter list.
  *
  * A Calibre library brings back every genre its owner ever typed, and a filter
- * list of four hundred entries is not a filter. This screen keeps the handful
- * that are: tick them, or paste a list you already have.
+ * list of hundreds of entries is not a filter. This screen keeps the handful
+ * that are — by family, because the genres are hierarchical and ticking two
+ * hundred boxes one at a time is a chore nobody finishes.
  */
 class GenreSettingsScreen : Screen {
 
@@ -44,10 +56,11 @@ class GenreSettingsScreen : Screen {
         val vm = rememberScreenModel { viewModelFactory.getGenreSettingsViewModel() }
         LaunchedEffect(Unit) { vm.initialize() }
 
-        // Composed one row per genre inside a scrolling container, so a library
-        // with four hundred genres pays for four hundred rows on every
-        // recomposition. The filter is what keeps that number small in practice.
         var filter by remember { mutableStateOf("") }
+        // Families start folded: fifty-eight rows fit on a screen, two hundred
+        // and fourteen do not. Only what the reader opens is composed, which is
+        // also what keeps a plain Column affordable inside a scrolling parent.
+        var unfolded by remember { mutableStateOf<Set<String>>(emptySet()) }
 
         SettingsScreenContainer(title = "Genres") {
             Column(
@@ -69,89 +82,205 @@ class GenreSettingsScreen : Screen {
                         Text("Lecture des genres…", modifier = Modifier.padding(start = 10.dp))
                     }
                 } else {
-                    Surface(
-                        color = MaterialTheme.colorScheme.surfaceVariant,
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.fillMaxWidth(),
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(
+                        if (vm.keepsEverything)
+                            "Aucun genre coché — les ${vm.allGenres.size} genres du catalogue " +
+                                "restent proposés, répartis en ${vm.groups.size} familles."
+                        else "${vm.selected.size} genre(s) conservé(s) sur ${vm.allGenres.size}, " +
+                            "en ${vm.groups.size} familles.",
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(10.dp),
+                    )
+                }
+
+                OutlinedTextField(
+                    value = filter,
+                    onValueChange = { filter = it },
+                    label = { Text("Chercher un genre") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
+                val term = filter.trim()
+                val shown = remember(vm.groups, term) {
+                    if (term.isEmpty()) vm.groups
+                    else vm.groups.mapNotNull { group ->
+                        when {
+                            group.root.contains(term, ignoreCase = true) -> group
+                            else -> group.entries
+                                .filter { it.genre.contains(term, ignoreCase = true) }
+                                .takeIf { it.isNotEmpty() }
+                                ?.let { group.copy(entries = it) }
+                        }
+                    }
+                }
+                val shownGenres = remember(shown) { shown.flatMap { it.genres } }
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    // The counterpart of the search field: narrow the list to
+                    // "Fantasy", tick the family in one press. With an empty
+                    // search it is "keep everything explicitly", which is a
+                    // different thing from keeping nothing.
+                    TextButton(
+                        onClick = { vm.setAll(shownGenres, true) },
+                        enabled = shownGenres.any { it !in vm.selected },
                     ) {
                         Text(
-                            if (vm.keepsEverything) "Aucun genre coché — les ${vm.counts.size} genres du catalogue restent proposés."
-                            else "${vm.selected.size} genre(s) conservé(s) sur ${vm.counts.size}.",
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(10.dp),
+                            if (term.isEmpty()) "Tout cocher"
+                            else "Cocher les ${shownGenres.size} affichés"
                         )
                     }
-
-                    OutlinedTextField(
-                        value = vm.pasted,
-                        onValueChange = vm::onPastedChange,
-                        label = { Text("Coller une liste (un genre par ligne, ou séparés par des virgules)") },
-                        minLines = 3,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+                    TextButton(
+                        onClick = { vm.setAll(shownGenres, false) },
+                        enabled = shownGenres.any { it in vm.selected },
                     ) {
-                        TextButton(onClick = vm::applyPasted, enabled = vm.pasted.isNotBlank()) {
-                            Text("Ajouter la liste")
-                        }
-                        TextButton(onClick = vm::clear, enabled = vm.selected.isNotEmpty()) {
-                            Text("Tout décocher")
-                        }
-                        Button(onClick = vm::save) { Text("Enregistrer") }
+                        Text(if (term.isEmpty()) "Tout décocher" else "Décocher les affichés")
                     }
+                    Button(onClick = vm::save) { Text("Enregistrer") }
+                }
 
-                    vm.status?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
-                    vm.error?.let {
-                        Text(
-                            it,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.error,
-                        )
-                    }
-
-                    HorizontalDivider()
-
-                    OutlinedTextField(
-                        value = filter,
-                        onValueChange = { filter = it },
-                        label = { Text("Chercher un genre") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
+                vm.status?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+                vm.error?.let {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
                     )
+                }
 
-                    val shown = remember(vm.counts, filter) {
-                        val term = filter.trim()
-                        if (term.isEmpty()) vm.counts
-                        else vm.counts.filter { it.genre.contains(term, ignoreCase = true) }
-                    }
+                HorizontalDivider()
 
-                    if (shown.isEmpty()) {
-                        Text(
-                            if (vm.counts.isEmpty()) "Le catalogue n'a encore aucun genre — synchronisez-le d'abord."
-                            else "Aucun genre ne correspond.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    } else {
-                        shown.forEach { count ->
+                if (shown.isEmpty()) {
+                    Text(
+                        if (vm.groups.isEmpty())
+                            "Le catalogue n'a encore aucun genre — synchronisez-le d'abord."
+                        else "Aucun genre ne correspond.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    shown.forEach { group ->
+                        if (group.isLeaf) {
                             CheckboxWithLabel(
-                                checked = count.genre in vm.selected,
-                                onCheckedChange = { vm.toggle(count.genre) },
-                                label = {
-                                    Text(
-                                        "${count.genre}  ·  ${count.seriesCount}",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                    )
-                                },
+                                checked = group.root in vm.selected,
+                                onCheckedChange = { vm.toggle(group.root) },
+                                label = { GenreLabel(group.root, group.seriesCount) },
                                 modifier = Modifier.fillMaxWidth(),
                             )
+                        } else {
+                            // Searching already told us which family the reader
+                            // means, so it opens itself rather than asking for a
+                            // second gesture.
+                            val open = group.root in unfolded || term.isNotEmpty()
+                            FamilyRow(
+                                group = group,
+                                selected = vm.selected,
+                                open = open,
+                                onToggle = { vm.toggleGroup(group) },
+                                onUnfold = {
+                                    unfolded =
+                                        if (group.root in unfolded) unfolded - group.root
+                                        else unfolded + group.root
+                                },
+                            )
+                            if (open) {
+                                group.entries.forEach { entry ->
+                                    CheckboxWithLabel(
+                                        checked = entry.genre in vm.selected,
+                                        onCheckedChange = { vm.toggle(entry.genre) },
+                                        label = {
+                                            GenreLabel(
+                                                entry.genre.removePrefix("${group.root}.")
+                                                    .ifEmpty { group.root },
+                                                entry.seriesCount,
+                                            )
+                                        },
+                                        modifier = Modifier.fillMaxWidth().padding(start = 32.dp),
+                                    )
+                                }
+                            }
                         }
                     }
+                }
+
+                HorizontalDivider()
+
+                // Last, not first: the families above are the fast way in, and
+                // this field is for the reader who already keeps their list
+                // elsewhere — a note, a Calibre column.
+                OutlinedTextField(
+                    value = vm.pasted,
+                    onValueChange = vm::onPastedChange,
+                    label = { Text("Coller une liste (un genre par ligne, ou séparés par des virgules)") },
+                    minLines = 3,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                TextButton(onClick = vm::applyPasted, enabled = vm.pasted.isNotBlank()) {
+                    Text("Cocher les genres de la liste")
+                }
                 }
             }
         }
     }
+}
+
+@Composable
+private fun FamilyRow(
+    group: GenreGroup,
+    selected: Set<String>,
+    open: Boolean,
+    onToggle: () -> Unit,
+    onUnfold: () -> Unit,
+) {
+    val ticked = group.genres.count { it in selected }
+    val state = when (ticked) {
+        0 -> ToggleableState.Off
+        group.genres.size -> ToggleableState.On
+        else -> ToggleableState.Indeterminate
+    }
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.weight(1f)
+                .clickable(onClick = onToggle)
+                .pointerHoverIcon(PointerIcon.Hand)
+                .padding(10.dp),
+        ) {
+            TriStateCheckbox(state = state, onClick = null)
+            Spacer(Modifier.size(10.dp))
+            Text(
+                "${group.root}  ·  ${group.seriesCount}",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Spacer(Modifier.size(8.dp))
+            Text(
+                "${group.genres.size} genres" + if (ticked in 1 until group.genres.size) ", $ticked cochés" else "",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Icon(
+            imageVector = if (open) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+            contentDescription = if (open) "Replier ${group.root}" else "Déplier ${group.root}",
+            modifier = Modifier.clickable(onClick = onUnfold)
+                .pointerHoverIcon(PointerIcon.Hand)
+                .padding(10.dp),
+        )
+    }
+}
+
+@Composable
+private fun GenreLabel(name: String, seriesCount: Int) {
+    Text("$name  ·  $seriesCount", style = MaterialTheme.typography.bodyMedium)
 }

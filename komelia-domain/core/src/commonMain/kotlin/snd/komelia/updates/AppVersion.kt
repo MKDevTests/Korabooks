@@ -19,7 +19,7 @@ data class AppVersion(
     companion object {
         // Korabooks starts its own count. It inherited Kora's 1.4.6, which
         // would have made every future Kora release look like an update.
-        val current = AppVersion(0, 3, 0)
+        val current = AppVersion(0, 3, 1)
 
         fun fromString(value: String): AppVersion =
             fromStringOrNull(value) ?: error("Can't parse version number")

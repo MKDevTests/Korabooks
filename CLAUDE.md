@@ -93,6 +93,18 @@ sudo mkdir -p /mnt/l && sudo mount -t drvfs 'L:' /mnt/l
    `git diff --ignore-cr-at-eol`.
 8. **`cut -c1-140` tronque les logs** et fait lire `offset=6780` comme
    `offset=67`. Ne pas diagnostiquer sur des lignes tronquées.
+9. **Ne jamais builder depuis Windows / Git Bash.** Deux dégâts distincts :
+   le wrapper (Gradle 9.3.1) n'est pas téléchargeable côté Windows — TLS
+   intercepté, `PKIX path building failed`, et seul un `.part` traîne dans le
+   cache ; et le git de Windows a `core.autocrlf=true`, donc tout fichier qu'il
+   touche repart en CRLF sur le disque et WSL le voit modifié à tort (§3.7).
+   Le build est en WSL, point. Un chemin `/c/...` au lieu de `/mnt/c/...` est
+   le premier symptôme qu'on s'est trompé de shell.
+10. **`ANDROID_HOME` est exporté dans `~/.bashrc`**, que `bash -lc` ne source
+    pas (non interactif). D'où l'échec « SDK location not found » quand on
+    lance un build par `wsl -e bash -lc` sans l'exporter — c'est pour ça que la
+    commande du §2 l'exporte explicitement. `local.properties` ne sauve pas :
+    son `sdk.dir` est un chemin Windows, invalide depuis WSL.
 
 ---
 
@@ -121,6 +133,45 @@ sudo mkdir -p /mnt/l && sudo mount -t drvfs 'L:' /mnt/l
 ---
 
 ## 5. Ce que la mesure a établi sur les genres
+
+> **⚠️ La source a été nettoyée depuis (mesuré le 2026-08-07).** Les points 2 à 4
+> ci-dessous décrivent un état révolu. `L:` est `\\192.168.1.30\Lectures`, donc
+> `/mnt/l/Livres_Calibre/metadata.db` **est** le fichier que Calibre-Web sert.
+> Ce qu'il contient aujourd'hui, sur 10 542 livres :
+> - **214 tags**, pas 1 191. Tous hiérarchisés et propres, aucun orphelin,
+>   32 seulement sur un livre unique. Top 5 : `Policier/thriller` (4 429),
+>   `SF` (2 192), `Non_Fiction` (1 583), `Fantasy` (1 466), `Suspense` (1 167).
+> - Les trois scories citées au point 4 (`1001Ebooks.com`, `1715-1789`,
+>   `1914-1918 -- Campaigns -- France`) **n'existent plus** dans `tags`.
+> - `custom_columns` ne contient plus que `id=1 mots`. La table
+>   `custom_column_14` survit avec ses 214 valeurs, **identiques à `tags`** :
+>   la colonne `genre` a été versée dans les tags puis supprimée.
+>
+> Conséquence : les 1 191 genres encore visibles dans l'application sont des
+> lignes de miroir **périmées**, écrites par une synchro antérieure au nettoyage.
+> Elles ne sont pas orphelines (leurs séries existent), donc la jointure de
+> `3367b62d` ne les élimine pas — seule une synchro qui réécrit les genres de
+> chaque série le fera, c'est-à-dire **« Tout resynchroniser »**, pas
+> « Nouveautés » ni « Reprendre ». Soit des heures (§4.3).
+> **Miroir de l'appareil mesuré** (`server_1_offline.sqlite`, tiré le
+> 2026-08-07, `flyway = ['1']`, 7 138 séries, 8 001 lignes de genre) :
+> - **1 191 genres distincts, tous rattachés à une série vivante.** La jointure
+>   de `3367b62d` n'en élimine aucun : ce ne sont pas des orphelins.
+> - Intersection avec les 214 du serveur : **139**. Donc **1 052 périmés**
+>   (`&#160;`, `+ 13 ans`, `1001Ebooks.com`, `1715-1789`…) et surtout
+>   **75 des 214 vrais genres absents du miroir** (`Anime`, `Classique`,
+>   `Fantasy.Dark_Fantasy`…).
+>
+> **Conclusion : « Tout resynchroniser » est obligatoire, la liste blanche ne
+> peut pas s'y substituer.** Cocher ne choisit que parmi ce que le miroir
+> connaît, et 75 genres réels n'y sont pas ; coller les 214 n'en cocherait
+> que 139. La re-synchro fait bien le ménage :
+> `ExposedOfflineSeriesMetadataRepository:57` supprime les genres d'une série
+> avant de les réécrire.
+>
+> La liste blanche garde son intérêt **après** : 214 genres restent longs, et
+> ils sont hiérarchisés sur **58 racines**. Le bonus `SF` → `SF.*` de §7.1,
+> noté « pas fait », devient de loin la partie la plus utile.
 
 1. Les genres viennent de `<category>` dans le flux OPDS = champ **tags** de
    Calibre (`OpdsMapping.kt`).
@@ -173,18 +224,45 @@ sudo mkdir -p /mnt/l && sudo mount -t drvfs 'L:' /mnt/l
 
 ## 7. Reste à faire
 
-1. **Liste blanche de genres** (spécifiée, non codée) :
-   - Migration `migrations/offline/V2__retained_genres.sql` — la base offline
-     n'a que `V1__offline_mode.sql`. Enregistrer dans `OfflineMigrations.kt`.
-   - Table `RETAINED_GENRE (GENRE text primary key)`, vide par défaut.
-   - `ExposedOfflineReferentialRepository.findAllGenres` et ses variantes
-     filtrent dessus, **sauf si la table est vide** (sinon l'écran se vide chez
-     les utilisateurs existants).
-   - Écran `Réglages → Genres` sur le modèle de `CatalogueSettingsScreen` :
-     genres triés par nombre de séries, cases à cocher, champ « coller une
-     liste ».
-   - Câblage : `CoreModule`, `AndroidAppModule`, `DesktopAppModule`.
-   - Bonus offert par la hiérarchie à points : cocher `SF` peut proposer `SF.*`.
-2. Collections manuelles.
-3. KOSync.
-4. Recherche plein texte dans le livre.
+1. **Liste blanche de genres — livrée** (`69cd6d4f` sur `books/scaffold`,
+   2026-08-07, 14 fichiers, +453 lignes). Ce qui est en place :
+   - `migrations/offline/V2__retained_genres.sql`, enregistrée dans
+     `OfflineMigrations.kt`. Table `RETAINED_GENRE (genre TEXT PRIMARY KEY)`,
+     vide par défaut.
+   - `findAllGenres` et `findAllGenresByLibraries` filtrent dessus. Liste vide
+     = `null` = aucun filtre, pour ne rien cacher aux installations existantes.
+     (`findAllGenresByCollection` renvoie déjà `emptyList()` en amont.)
+   - `RetainedGenreRepository` (domaine) + `ExposedRetainedGenreRepository` :
+     liste, comptes par genre (`count(distinct series)`, joint sur les séries
+     vivantes, tri décroissant), remplacement complet.
+   - Écran `Réglages → Genres` : cases à cocher `genre · N`, champ « coller une
+     liste », champ de recherche, « Tout décocher », « Enregistrer ».
+   - Câblage réel : `OfflineRepositories` (`OfflineModule.kt`),
+     `AndroidAppModule`, `DesktopAppModule` (en base **inscriptible**, ses
+     voisins y sont en lecture seule), `ViewModelFactory`,
+     `SettingsNavigationMenu`. **Pas** `CoreModule` — la spécification se
+     trompait de fichier.
+   - **Pas fait** : le bonus hiérarchique (cocher `SF` proposant `SF.*`).
+   - **Non vérifié** : jamais installée ni exécutée. Compilé seulement, et le
+     seul « BUILD SUCCESSFUL » obtenu vient d'un Gradle Windows — sans valeur
+     tant qu'un canari (§3.4) ne l'a pas confirmé sous WSL.
+   - **Tranchée par la mesure (§5)** : la liste blanche ne remplace pas la
+     re-synchro complète, elle vient après. Ordre : installer cette version,
+     lancer « Tout resynchroniser », puis raccourcir les 214 genres obtenus.
+2. ~~**Bonus hiérarchique `SF` → `SF.*`**~~ — **livré** (2026-08-07). L'écran
+   groupe par racine (`genreRoot`, découpe sur le point), case **tri-état** par
+   famille, familles repliées par défaut et dépliées d'office quand une
+   recherche est active. Le compte d'une famille est un **distinct** de séries,
+   pas la somme de ses enfants — sommer gonflait chaque famille dès qu'une série
+   portait `Fantasy` *et* `Fantasy.Historique`. Ajouté aussi :
+   « Cocher les N affichés » / « Décocher les affichés », qui suivent le filtre
+   de recherche.
+3. **Bug latent `ExposedOfflineSeriesMetadataRepository:71-72`** : la garde
+   teste `metadata.tags.isNotEmpty()` mais la boucle itère `metadata.genres`.
+   Les tags de série reçoivent donc les genres, et les vrais tags sont perdus.
+   Invisible ici — la table des tags du miroir est **vide** (0 ligne), ce flux
+   OPDS ne remplit que les genres. À corriger avant toute source qui fournit
+   les deux.
+4. Collections manuelles.
+5. KOSync.
+6. Recherche plein texte dans le livre.

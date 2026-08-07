@@ -31,6 +31,7 @@ import snd.komelia.offline.api.OfflineUserApi
 import snd.komelia.offline.api.repository.OfflineBookDtoRepository
 import snd.komelia.offline.api.repository.OfflineReferentialRepository
 import snd.komelia.offline.api.repository.OfflineSeriesDtoRepository
+import snd.komelia.offline.api.repository.RetainedGenreRepository
 import snd.komelia.offline.book.actions.BookAnalyzeAction
 import snd.komelia.offline.book.actions.BookDeleteAction
 import snd.komelia.offline.book.actions.BookDeleteFilesAction
@@ -121,6 +122,7 @@ data class OfflineRepositories(
     val userRepository: OfflineUserRepository,
     val bookDtoRepository: OfflineBookDtoRepository,
     val referentialRepository: OfflineReferentialRepository,
+    val retainedGenreRepository: RetainedGenreRepository,
     val seriesDtoRepository: OfflineSeriesDtoRepository,
     val logJournalRepository: LogJournalRepository,
     val transactionTemplate: TransactionTemplate,

@@ -52,6 +52,7 @@ import snd.komelia.db.offline.ExposedOfflineTasksRepository
 import snd.komelia.db.offline.ExposedOfflineThumbnailBookRepository
 import snd.komelia.db.offline.ExposedOfflineThumbnailSeriesRepository
 import snd.komelia.db.offline.ExposedOfflineUserRepository
+import snd.komelia.db.offline.ExposedRetainedGenreRepository
 import snd.komelia.db.offline.dto.ExposedOfflineBookDtoRepository
 import snd.komelia.db.offline.dto.ExposedOfflineReferentialRepository
 import snd.komelia.db.offline.dto.ExposedSeriesDtoRepository
@@ -304,6 +305,7 @@ class AndroidAppModule(
             userRepository = ExposedOfflineUserRepository(databases.offline),
             bookDtoRepository = ExposedOfflineBookDtoRepository(databases.offline),
             referentialRepository = ExposedOfflineReferentialRepository(databases.offline),
+            retainedGenreRepository = ExposedRetainedGenreRepository(databases.offline),
             seriesDtoRepository = ExposedSeriesDtoRepository(databases.offline),
             tasksRepository = ExposedOfflineTasksRepository(databases.offline),
             logJournalRepository = ExposedLogJournalRepository(databases.offline),

@@ -99,6 +99,16 @@ fun SettingsNavigationMenu(
                         isSelected = currentScreen is snd.komelia.ui.settings.catalogue.CatalogueSettingsScreen,
                     )
                 )
+                // Right after the catalogue, because it is the one thing to fix
+                // once the catalogue has been read once and the genre list came
+                // back four hundred entries long.
+                add(
+                    NavEntry(
+                        label = "Genres",
+                        onClick = { onNavigation(snd.komelia.ui.settings.genres.GenreSettingsScreen()) },
+                        isSelected = currentScreen is snd.komelia.ui.settings.genres.GenreSettingsScreen,
+                    )
+                )
                 add(
                     NavEntry(
                         label = LocalStrings.current.ui.appearance,

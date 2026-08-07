@@ -12,6 +12,7 @@ import org.jetbrains.exposed.v1.core.neq
 import org.jetbrains.exposed.v1.jdbc.Database
 import org.jetbrains.exposed.v1.jdbc.andWhere
 import org.jetbrains.exposed.v1.jdbc.select
+import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.union
 import snd.komelia.db.ExposedRepository
 import snd.komelia.db.offline.conditions.containsIgnoreCase
@@ -23,6 +24,7 @@ import snd.komelia.db.offline.tables.OfflineBookMetadataAggregationTagTable
 import snd.komelia.db.offline.tables.OfflineBookMetadataAuthorTable
 import snd.komelia.db.offline.tables.OfflineBookMetadataTagTable
 import snd.komelia.db.offline.tables.OfflineBookTable
+import snd.komelia.db.offline.tables.OfflineRetainedGenreTable
 import snd.komelia.db.offline.tables.OfflineSeriesMetadataGenreTable
 import snd.komelia.db.offline.tables.OfflineSeriesMetadataSharingTable
 import snd.komelia.db.offline.tables.OfflineSeriesMetadataTable
@@ -46,6 +48,7 @@ class ExposedOfflineReferentialRepository(
     private val seriesMetaGenresTable = OfflineSeriesMetadataGenreTable
     private val seriesMetaTagTable = OfflineSeriesMetadataTagTable
     private val seriesMetaSharingTable = OfflineSeriesMetadataSharingTable
+    private val retainedGenreTable = OfflineRetainedGenreTable
     private val bookTable = OfflineBookTable
     private val bookMetaTagTable = OfflineBookMetadataTagTable
     private val bookAuthorsTable = OfflineBookMetadataAuthorTable
@@ -346,6 +349,7 @@ class ExposedOfflineReferentialRepository(
      */
     override suspend fun findAllGenres(): List<String> {
         return transaction {
+            val retained = retainedGenres()
             seriesMetaGenresTable
                 .join(
                     otherTable = seriesTable,
@@ -355,6 +359,7 @@ class ExposedOfflineReferentialRepository(
                 )
                 .select(seriesMetaGenresTable.genre)
                 .withDistinct()
+                .apply { retained?.let { andWhere { seriesMetaGenresTable.genre.inList(it) } } }
                 .orderBy(seriesMetaGenresTable.genre)
                 .map { it[seriesMetaGenresTable.genre] }
         }
@@ -362,6 +367,7 @@ class ExposedOfflineReferentialRepository(
 
     override suspend fun findAllGenresByLibraries(libraryIds: List<KomgaLibraryId>): List<String> {
         return transaction {
+            val retained = retainedGenres()
             seriesMetaGenresTable
                 .join(
                     otherTable = seriesTable,
@@ -372,9 +378,29 @@ class ExposedOfflineReferentialRepository(
                 .select(seriesMetaGenresTable.genre)
                 .withDistinct()
                 .where { seriesTable.libraryId.inList(libraryIds.map { it.value }) }
+                .apply { retained?.let { andWhere { seriesMetaGenresTable.genre.inList(it) } } }
                 .orderBy(seriesMetaGenresTable.genre)
                 .map { it[seriesMetaGenresTable.genre] }
         }
+    }
+
+    /**
+     * The reader's short list, or null when they never made one.
+     *
+     * Null rather than an empty set, because the two mean opposite things here:
+     * an empty RETAINED_GENRE is "no opinion, show everything", and reading it
+     * as a filter would empty the genre list for every existing install the
+     * moment this migration ran.
+     *
+     * Read as a list and applied in Kotlin rather than left as a subquery: a
+     * kept list is twenty or thirty names, one extra query against a primary
+     * key, and the alternative is a correlated subquery in a statement that is
+     * already a join with DISTINCT.
+     */
+    private fun retainedGenres(): List<String>? {
+        return retainedGenreTable.selectAll()
+            .map { it[retainedGenreTable.genre] }
+            .takeIf { it.isNotEmpty() }
     }
 
     override suspend fun findAllGenresByCollection(collectionId: KomgaCollectionId): List<String> {

@@ -802,6 +802,12 @@ class ViewModelFactory(
         return snd.komelia.ui.settings.catalogue.CatalogueSettingsViewModel(dependencies.opdsCatalogue)
     }
 
+    fun getGenreSettingsViewModel(): snd.komelia.ui.settings.genres.GenreSettingsViewModel {
+        return snd.komelia.ui.settings.genres.GenreSettingsViewModel(
+            dependencies.offlineDependencies.repositories.retainedGenreRepository
+        )
+    }
+
     fun getCatalogueStartViewModel(): snd.komelia.ui.startup.CatalogueStartViewModel {
         return snd.komelia.ui.startup.CatalogueStartViewModel(
             offlineSettingsRepository = dependencies.offlineDependencies.repositories.offlineSettingsRepository,

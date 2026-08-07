@@ -120,33 +120,59 @@ class GenreSettingsViewModel(
      *
      * The field is there for the reader who already keeps their list somewhere
      * else — a note, a Calibre column — and pasting it should not undo the boxes
-     * they ticked here two minutes ago. Names the library does not have are
-     * reported rather than written: a kept genre no series wears would filter
-     * nothing, and silence would let a stale mirror look like a working list.
+     * they ticked here two minutes ago.
+     *
+     * Names the mirror has never seen are **kept**, not dropped. They used to be
+     * discarded on the grounds that a genre no series wears filters nothing, and
+     * that was wrong: a mirror synced before the library was tidied is missing
+     * genuine genres — seventy-five of two hundred and fourteen, measured — and
+     * dropping them meant the reader could not write their real list until a
+     * full resync had run for hours. Kept, they cost one row, they filter
+     * nothing until the genre arrives, and they start working the moment it
+     * does. Still counted out loud, because a name that matches nothing is also
+     * how a typo looks.
      */
     fun applyPasted() {
         val known = allGenres.associateBy { it.lowercase() }
         val names = pasted.split('\n', ',', ';')
             .map { it.trim() }
             .filter { it.isNotEmpty() }
+            .distinctBy { it.lowercase() }
         if (names.isEmpty()) return
 
-        val matched = names.mapNotNull { known[it.lowercase()] }
-        val unknown = names.filter { known[it.lowercase()] == null }
+        // Prefer the mirror's own spelling when it has one, so ticking a box and
+        // pasting the same genre don't end up as two rows.
+        val (present, awaited) = names.map { known[it.lowercase()] ?: it }
+            .partition { known.containsKey(it.lowercase()) }
 
-        setAll(matched, true)
+        setAll(present + awaited, true)
         pasted = ""
         status = buildString {
-            append("${matched.size} genre(s) ajouté(s)")
-            if (unknown.isNotEmpty()) {
-                append(" — introuvables dans le catalogue : ")
-                append(unknown.take(5).joinToString(", "))
-                if (unknown.size > 5) append("…")
+            append("${present.size} genre(s) coché(s)")
+            if (awaited.isNotEmpty()) {
+                append(", ${awaited.size} en attente — pas encore dans le miroir, ")
+                append("ils s'appliqueront après une synchronisation complète : ")
+                append(awaited.take(5).joinToString(", "))
+                if (awaited.size > 5) append("…")
             }
         }
     }
 
-    fun clear() = setAll(allGenres, false)
+    /**
+     * Retained genres the mirror does not have yet.
+     *
+     * Worth its own figure on screen: without it, "142 conservés" over a list
+     * showing 139 boxes reads like an arithmetic bug rather than a list waiting
+     * on a resync.
+     */
+    val awaited: Int get() = (selected - allGenres.toSet()).size
+
+    /** Empties the list outright — including genres the mirror has never seen. */
+    fun clear() {
+        selected = emptySet()
+        status = null
+        error = null
+    }
 
     fun save() {
         screenModelScope.launch {

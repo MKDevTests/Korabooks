@@ -89,10 +89,16 @@ class GenreSettingsScreen : Screen {
                 ) {
                     Text(
                         if (vm.keepsEverything)
-                            "Aucun genre coché — les ${vm.allGenres.size} genres du catalogue " +
+                            "Aucun genre coché — les ${vm.allGenres.size} genres du miroir " +
                                 "restent proposés, répartis en ${vm.groups.size} familles."
-                        else "${vm.selected.size} genre(s) conservé(s) sur ${vm.allGenres.size}, " +
-                            "en ${vm.groups.size} familles.",
+                        else buildString {
+                            append("${vm.selected.size} genre(s) conservé(s) sur ${vm.allGenres.size} ")
+                            append("connus du miroir, en ${vm.groups.size} familles.")
+                            if (vm.awaited > 0) {
+                                append(" Dont ${vm.awaited} que le miroir n'a pas encore : ")
+                                append("ils s'appliqueront après « Tout resynchroniser ».")
+                            }
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.padding(10.dp),
                     )
@@ -138,9 +144,13 @@ class GenreSettingsScreen : Screen {
                             else "Cocher les ${shownGenres.size} affichés"
                         )
                     }
+                    // With no search, "tout" has to mean the genres awaiting a
+                    // resync too — they are invisible here, and a button that
+                    // leaves rows behind is a button that lies.
                     TextButton(
-                        onClick = { vm.setAll(shownGenres, false) },
-                        enabled = shownGenres.any { it in vm.selected },
+                        onClick = { if (term.isEmpty()) vm.clear() else vm.setAll(shownGenres, false) },
+                        enabled = if (term.isEmpty()) vm.selected.isNotEmpty()
+                        else shownGenres.any { it in vm.selected },
                     ) {
                         Text(if (term.isEmpty()) "Tout décocher" else "Décocher les affichés")
                     }

@@ -88,11 +88,22 @@ else
     git -c core.fileMode=false status --short --ignore-submodules=all | sed 's/^/      /' >&2
 fi
 
-# ----- 3. tag uniqueness on origin -----
+# ----- 3. tag uniqueness, on origin AND locally -----
 if git ls-remote --tags origin "refs/tags/$TAG" 2>/dev/null | grep -q "$TAG"; then
-    fail "tag $TAG already exists on origin (MKDevTests/Kora). Pick a new version."
+    fail "tag $TAG already exists on origin (MKDevTests/Korabooks). Pick a new version."
 else
     pass "tag $TAG is available on origin"
+fi
+
+# Locally too, and it is not the same question. This checkout also has the
+# `kora` remote, which brought 59 tags of its own — v1.0.0 through v1.4.6 —
+# that were never pushed to origin. A version can therefore be free on origin
+# and taken here: releasing 1.0.0 passed every check above and would have died
+# at `git tag`, halfway through, with the version bump already committed.
+if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null 2>&1; then
+    fail "tag $TAG already exists locally (inherited from the 'kora' remote). Either pick a version above v1.4.6, or drop the inherited tag with: git tag -d $TAG"
+else
+    pass "tag $TAG is available locally"
 fi
 
 # ----- 4. local.properties present (Android SDK path) -----

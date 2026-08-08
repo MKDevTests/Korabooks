@@ -44,3 +44,8 @@ stable.sqlite
 # Similar-series bench: local scratch index pulled from the server
 scripts/similar-bench/index_*.json
 scripts/similar-bench/__pycache__/
+
+# Release notes: written for `gh release`, which keeps them once published.
+# Untracked they piled up at the repo root and preflight — rightly — refused
+# to tag a release with a dirty tree because of them.
+release-notes-*.md

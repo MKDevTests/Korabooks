@@ -34,6 +34,14 @@ private const val BATCH = 250
  */
 private const val QUEUE_DEPTH = 600
 
+/**
+ * Unopenable books named individually before the log settles for a total.
+ *
+ * Enough to tell a handful of MOBI-only oddities from a format preference that
+ * is wrong for the whole library, without printing a line per book.
+ */
+private const val UNREADABLE_SAMPLE = 20
+
 data class OpdsSyncResult(
     val libraryId: KomgaLibraryId,
     val shelves: Int,
@@ -235,6 +243,9 @@ class OpdsCatalogueSync(
         // not say, and the grouping pass is the only way to find out.
         var named = 0
 
+        /** Books the catalogue holds in no format this app can open. */
+        var unreadable = 0
+
         // Books first. This is the half that makes a library exist: it costs a
         // few hundred requests, and when it is done everything is there to browse
         // and to read — grouped too, on a catalogue that names its series.
@@ -253,7 +264,25 @@ class OpdsCatalogueSync(
             val writing = launch {
                 for (shelf in queue) {
                     val mapped = mapper.map(shelf)
-                    if (mapped.books.isEmpty()) continue
+                    // A shelf whose books offer no format this app can open —
+                    // MOBI or AZW alone, typically. Dropping them is deliberate
+                    // (see OpdsMapper.DEFAULT_FORMATS: offering a book we cannot
+                    // open is a promise broken at the last tap), but dropping
+                    // them silently meant a library that arrived thirteen books
+                    // short with nothing anywhere to say which, or why.
+                    if (mapped.books.isEmpty()) {
+                        unreadable++
+                        if (unreadable <= UNREADABLE_SAMPLE) {
+                            logger.info {
+                                "OPDS no readable format for \"${shelf.title}\" — " +
+                                    shelf.entries.flatMap { it.acquisitions }
+                                        .mapNotNull { it.type }
+                                        .ifEmpty { listOf("no acquisition link") }
+                                        .joinToString()
+                            }
+                        }
+                        continue
+                    }
                     pending += mapped
                     shelf.entries.forEach { entry ->
                         entry.thumbnail?.href?.let { pendingCovers[mapper.bookId(entry)] = it }
@@ -390,8 +419,12 @@ class OpdsCatalogueSync(
         val emptied = writer.pruneEmptySeries(libraryId)
         // Last, because it counts what the pruning leaves behind.
         val recounted = writer.refreshBookCounts(libraryId)
+        if (unreadable > 0) {
+            logger.warn { "OPDS $unreadable books skipped: no format this app can open" }
+        }
         logger.info {
-            "OPDS sync done: ${kept.size - emptied} shelves, $books books, $recounted counts corrected"
+            "OPDS sync done: ${kept.size - emptied} shelves, $books books, " +
+                "$recounted counts corrected, $unreadable unreadable"
         }
         return OpdsSyncResult(libraryId, kept.size - emptied, books, covers)
     }

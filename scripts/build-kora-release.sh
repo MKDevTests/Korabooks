@@ -17,6 +17,11 @@ set -e
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
 
+# Same resolution as the debug script, and for the same reason: ANDROID_HOME
+# lives in ~/.bashrc, which a non-interactive shell never sources.
+. "$(dirname "$0")/_ensure_android_sdk.sh"
+ensure_android_sdk "$REPO_ROOT"
+
 # ----- args -----
 CLEAN=0
 MIGRATE=0

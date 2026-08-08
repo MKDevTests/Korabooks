@@ -13,6 +13,12 @@ set -e
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
 
+# Before anything else: a build that dies on "SDK location not found" two
+# seconds in wastes a round trip, and it dies for a reason that has nothing
+# to do with the branch or the code. See scripts/_ensure_android_sdk.sh.
+. "$(dirname "$0")/_ensure_android_sdk.sh"
+ensure_android_sdk "$REPO_ROOT"
+
 CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")"
 case "$CURRENT_BRANCH" in
     main)

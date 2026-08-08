@@ -104,7 +104,29 @@ sudo mkdir -p /mnt/l && sudo mount -t drvfs 'L:' /mnt/l
     pas (non interactif). D'où l'échec « SDK location not found » quand on
     lance un build par `wsl -e bash -lc` sans l'exporter — c'est pour ça que la
     commande du §2 l'exporte explicitement. `local.properties` ne sauve pas :
-    son `sdk.dir` est un chemin Windows, invalide depuis WSL.
+    son `sdk.dir` est un chemin Windows, invalide depuis WSL — mais correct pour
+    Android Studio côté Windows, donc on n'y touche pas.
+    **Réglé pour les scripts** : `scripts/_ensure_android_sdk.sh` résout le SDK
+    lui-même (env, puis `$HOME/android-sdk` & co., puis un `sdk.dir` POSIX) et
+    est sourcé par `build-kora-debug.sh` et `build-kora-release.sh`. Les deux
+    marchent donc sans environnement. Les appels `gradlew` directs (§2) doivent
+    toujours exporter la variable.
+11. **Ne pas préfixer par `wsl.exe` une commande destinée à l'utilisateur.**
+    Il travaille *déjà* dans un shell WSL interactif. Le préfixe crée un shell
+    non interactif imbriqué, qui perd `~/.bashrc` et retombe pile sur le piège
+    10 — erreur commise et constatée. Les commandes données à l'utilisateur se
+    limitent à `./scripts/…` depuis la racine du dépôt ; le préfixe `wsl.exe` ne
+    sert qu'à l'agent, qui lance depuis PowerShell.
+12. **Le quoting PowerShell → `wsl.exe -e bash -lc '…'` casse silencieusement**
+    dès qu'il y a des parenthèses, des `"` imbriqués ou `${...}` : la commande
+    est tronquée et la sortie fait croire à un échec du code. Écrire un script
+    dans le scratchpad et lancer `bash /chemin/script.sh`. Idem pour l'ordre
+    stdout/stderr, qui arrive entrelacé : rediriger avec `exec 2>&1` dans le
+    script si l'ordre compte.
+    **Cas particulier, constaté deux fois :** `git commit -m "sujet\n\ncorps"`
+    perd tout sauf la première ligne — le commit part avec le seul sujet.
+    Toujours écrire le message dans un fichier du scratchpad et utiliser
+    `git commit -F /chemin/message.txt`.
 
 ---
 
@@ -134,9 +156,35 @@ sudo mkdir -p /mnt/l && sudo mount -t drvfs 'L:' /mnt/l
 
 ## 5. Ce que la mesure a établi sur les genres
 
-> **⚠️ La source a été nettoyée depuis (mesuré le 2026-08-07).** Les points 2 à 4
+> **⚠️⚠️ TOUT L'ENCADRÉ CI-DESSOUS EST FAUX — retiré le 2026-08-08.**
+> J'avais conclu que la source était nettoyée. La resynchronisation complète a
+> tranché contre moi : elle a bien tourné (séries 7 138 → 7 261, lignes de genre
+> 8 001 → 8 076) et le miroir affiche **toujours 1 191 genres distincts**, dont
+> 1 063 absents de `metadata.db`. Or le chemin d'écriture **supprime** les genres
+> d'une série avant de les réécrire
+> (`ExposedOfflineSeriesMetadataRepository:57`, appelé par
+> `OpdsMirrorWriter:237`). Si ces 1 063 sont revenus, **le serveur les publie**.
+>
+> La cause de l'erreur : `/mnt/l/Livres_Calibre/metadata.db` **n'est pas** la
+> bibliothèque servie par Calibre-Web. Le miroir compte **10 561 livres**, ce
+> `metadata.db` en compte **10 542** — et 10 561 est justement le total mesuré
+> côté serveur au §4.5. Même hôte (`L:` = `\\192.168.1.30\Lectures`) ne veut pas
+> dire même répertoire.
+>
+> **Conséquences pratiques :** la liste blanche est bien la seule solution, comme
+> spécifié à l'origine ; « Tout resynchroniser » ne raccourcira jamais la liste
+> des genres ; et le fichier de 214 genres exporté de ce `metadata.db` ne décrit
+> pas la bibliothèque réelle — d'où des étiquettes sans rapport. **Avant de
+> refaire une liste, trouver quelle base Calibre-Web sert vraiment** (regarder sa
+> configuration, pas le partage réseau).
+>
+> Ce qui reste vrai plus bas : les points 1 à 4 de la section (provenance,
+> absence de `scheme` exploitable, la forme qui ne trie pas). Ce qui est faux :
+> tout ce qui suppose 214 genres propres côté serveur.
+>
+> ~~**La source a été nettoyée depuis (mesuré le 2026-08-07).** Les points 2 à 4
 > ci-dessous décrivent un état révolu. `L:` est `\\192.168.1.30\Lectures`, donc
-> `/mnt/l/Livres_Calibre/metadata.db` **est** le fichier que Calibre-Web sert.
+> `/mnt/l/Livres_Calibre/metadata.db` **est** le fichier que Calibre-Web sert.~~
 > Ce qu'il contient aujourd'hui, sur 10 542 livres :
 > - **214 tags**, pas 1 191. Tous hiérarchisés et propres, aucun orphelin,
 >   32 seulement sur un livre unique. Top 5 : `Policier/thriller` (4 429),
@@ -257,12 +305,43 @@ sudo mkdir -p /mnt/l && sudo mount -t drvfs 'L:' /mnt/l
    portait `Fantasy` *et* `Fantasy.Historique`. Ajouté aussi :
    « Cocher les N affichés » / « Décocher les affichés », qui suivent le filtre
    de recherche.
-3. **Bug latent `ExposedOfflineSeriesMetadataRepository:71-72`** : la garde
-   teste `metadata.tags.isNotEmpty()` mais la boucle itère `metadata.genres`.
-   Les tags de série reçoivent donc les genres, et les vrais tags sont perdus.
-   Invisible ici — la table des tags du miroir est **vide** (0 ligne), ce flux
-   OPDS ne remplit que les genres. À corriger avant toute source qui fournit
-   les deux.
-4. Collections manuelles.
-5. KOSync.
-6. Recherche plein texte dans le livre.
+3. ~~**Bug latent des tags de série**~~ — **corrigé** (2026-08-07, v0.3.1). La
+   garde testait `metadata.tags` et la boucle itérait `metadata.genres`.
+4. ~~**Preflight aveugle**~~ — **corrigé** (2026-08-07, v0.3.1). Le check des
+   migrations boucle désormais sur les **quatre** bases (`app`, `global`,
+   `offline`, `tasks`) et vérifie **chaque** fichier, pas seulement le dernier.
+5. ~~**Scintillement du lecteur epub**~~ — **corrigé** (2026-08-07, v0.3.1),
+   validé sur l'appareil. `hazeEffect` relisait le WebView à chaque image ; la
+   source du flou est maintenant le fond seul. Voir le commit `6318f682` : le
+   lecteur d'images n'était pas touché, sa source est du contenu Compose.
+
+### Reste vraiment à faire
+
+1. **LA SEULE CHOSE QUI RESTE SUR LES GENRES : lancer « Tout resynchroniser ».**
+   Jamais fait à ce jour. Le miroir porte encore ses 1 191 genres, dont 1 052
+   périmés, et il manque **75 genres réels** que rien d'autre ne peut rapporter
+   (§5). Compter plusieurs heures. Tant que ce n'est pas fait, l'écran Genres
+   montre l'ancien miroir — ce n'est pas un bug, c'est cette étape qui manque.
+2. Collections manuelles.
+3. Recherche plein texte dans le livre.
+
+### Mis de côté
+
+- **KOSync — en pause (2026-08-07), à la demande.** La décision de conception est
+  prise et vaut d'être gardée : on synchronise **entre installations Korabooks**,
+  serveur **auto-hébergé sur le NAS**. Donc protocole KOSync (conteneur existant,
+  rien à écrire côté serveur) mais on transporte le `locator` R2 — la **position
+  exacte** — dans le champ `progress`, qui est libre. La limite « pourcentage
+  seulement » ne concerne que l'interop KOReader, dont on n'a pas besoin.
+  `OfflineReadProgress` a déjà tout : `page`, `completed`, `locator`, `deviceId`,
+  `lastModifiedDate`.
+  Reste à écrire : le client (`/users/auth`, `PUT|GET /syncs/progress`), le
+  stockage des identifiants (sur le modèle d'`OpdsCredentialStore`), l'écran
+  `Réglages → Synchronisation`, puis l'automatisation.
+  **Déjà dans l'APK et inerte** : `snd.komelia.kosync.Md5`, MD5 pur Kotlin imposé
+  par le protocole, 3 tests verts, **aucun appelant**.
+- **Application desktop — hors périmètre (décision, 2026-08-07).** Korabooks est
+  Android. La cible JVM est cassée en amont depuis `86ffb863` (import égaré
+  `main.kt:175`, `cacheDirectory` introuvable, deux erreurs dans
+  `DesktopAppModule`) et **on ne la répare pas**. Ne pas la signaler comme un
+  bug ; si elle gêne un jour, la sortir du build plutôt que la corriger.

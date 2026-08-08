@@ -16,10 +16,26 @@ class RememberMePersistingCookieStore(
 ) : CookiesStorage {
     private val delegate = AcceptAllCookiesStorage()
 
+    /**
+     * Restores the saved session, and only if what was saved is a session.
+     *
+     * [parseServerSetCookieHeader] parses anything: given a string with no `=` it
+     * returns a cookie whose *name* is the whole string and whose value is empty.
+     * One of those reached the store — the Android secrets repository used to keep
+     * a single value for every key, so a catalogue login could land here — and
+     * every request afterwards died inside Ktor while rendering the Cookie header,
+     * because the name held a NUL. The store is keyed properly now; the shape is
+     * checked anyway, since one bad cookie breaks every request the client makes
+     * and the only cookie worth restoring is a named one.
+     */
     suspend fun loadRememberMeCookie() {
         val url = komgaUrl.value
         secretsRepository.getCookie(url.toString())
             ?.let { parseServerSetCookieHeader(it) }
+            ?.takeIf {
+                (it.name == rememberMeCookie || it.name == deprecatedRememberMeCookie) &&
+                        it.value.isNotBlank()
+            }
             ?.let { delegate.addCookie(url, it) }
     }
 

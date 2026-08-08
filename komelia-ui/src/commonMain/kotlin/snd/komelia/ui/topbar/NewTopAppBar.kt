@@ -15,9 +15,6 @@ import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.LightMode
 import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material.icons.rounded.MoreVert
-import androidx.compose.material.icons.rounded.Wifi
-import androidx.compose.material.icons.rounded.WifiOff
-import snd.komelia.ui.dialogs.ConfirmationDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -111,22 +108,16 @@ fun NewTopAppBar(
                 modifier = Modifier.weight(1f),
             )
 
-            var showOfflineDialog by remember { mutableStateOf(false) }
-            val wifiIcon = if (isOffline) Icons.Rounded.WifiOff else Icons.Rounded.Wifi
-            val wifiTint = if (isOffline) MaterialTheme.colorScheme.error else iconColor
-            IconButton(onClick = { showOfflineDialog = true }) {
-                Icon(wifiIcon, contentDescription = null, tint = wifiTint)
-            }
-            if (showOfflineDialog) {
-                ConfirmationDialog(
-                    body = if (isOffline) "Go Online?" else "Go Offline?",
-                    onDialogConfirm = {
-                        if (isOffline) mainScreenVm.goOnline() else mainScreenVm.goOffline()
-                        showOfflineDialog = false
-                    },
-                    onDialogDismiss = { showOfflineDialog = false }
-                )
-            }
+            // The wi-fi toggle that used to sit here is gone. Korabooks has one
+            // mode — see CatalogueStartViewModel: offline mode is not a fallback
+            // here, it is the only mode — so the icon always read as offline, in
+            // error red, and tapping it offered to leave for a Komga login screen
+            // and a server that does not exist. It looked like "you are offline"
+            // and acted as "take me online", which is how it came to be pressed.
+            //
+            // `goOnline` stays on the view model: the upstream project has two
+            // modes, and the settings screen still exposes the switch for anyone
+            // who means it.
 
             val toggleIcon = when (theme) {
                 Theme.LIGHT, Theme.LIGHT_MODERN -> Icons.Rounded.DarkMode

@@ -21,7 +21,20 @@ message ServerSettings{
 
 message UserSettings{
   string username = 1;
+
+  // Deprecated, kept so existing installs can be read once: see `secrets`.
   optional string rememberMe = 2;
+
+  // One entry per key, which is what SecretsRepository has always promised and
+  // what the desktop keyring implementation always did: the Komga session
+  // cookie under the server url, the OPDS catalogue login under "opds:<url>".
+  //
+  // Before this field existed, `rememberMe` was a single string the Android
+  // implementation returned for any key, so saving a catalogue login overwrote
+  // the session cookie with "<user>\0<password>". Coming back online fed that to
+  // the cookie parser, and Ktor refused the request — a Cookie header cannot
+  // hold a NUL.
+  map<string, string> secrets = 3;
 }
 
 message AppearanceSettings{

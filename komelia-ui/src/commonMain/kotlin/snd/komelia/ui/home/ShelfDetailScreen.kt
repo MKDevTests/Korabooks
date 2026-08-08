@@ -15,6 +15,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -32,6 +33,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.Json
+import kotlin.jvm.Transient
 import snd.komelia.AppNotifications
 import snd.komelia.homefilters.HomeScreenFilter
 import snd.komelia.komga.api.KomgaBookApi
@@ -60,6 +63,19 @@ import snd.komelia.ui.LocalStrings
 private const val SHELF_DETAIL_PAGE_SIZE = 50
 
 /**
+ * Encodes the shelf a [ShelfDetailScreen] shows, so it survives being saved.
+ *
+ * `classDiscriminator = "type"` matches what the backup and the settings column
+ * already use, and `encodeDefaults` keeps a shelf whose only difference from the
+ * default is a defaulted field from decoding as a different one.
+ */
+private val shelfFilterJson = Json {
+    ignoreUnknownKeys = true
+    encodeDefaults = true
+    classDiscriminator = "type"
+}
+
+/**
  * Full-screen view of one Home shelf. Tapping a shelf title on Home lands here.
  *
  * All 7 shelf types are supported because the screen doesn't reimplement any
@@ -70,13 +86,41 @@ private const val SHELF_DETAIL_PAGE_SIZE = 50
  *
  * No sorting, filtering or multi-selection here by design.
  */
-class ShelfDetailScreen(private val filter: HomeScreenFilter) : Screen {
-    override val key: String = "shelfDetail_${filter.order}_${filter.label}"
+class ShelfDetailScreen(shelf: HomeScreenFilter) : Screen {
+
+    /**
+     * The shelf as JSON, because on Android a [Screen] is saved by Java
+     * serialization and [HomeScreenFilter] is not `java.io.Serializable`.
+     *
+     * Holding the filter object crashed the app with a `BadParcelableException`
+     * (`NotSerializableException: BooksHomeScreenFilter$CustomFilter`) as soon as
+     * the activity was stopped — locking the phone on this shelf was enough.
+     * Marking the field `@Transient`, as the other screens do for their payloads,
+     * would have stopped the crash and left nothing to rebuild the shelf from.
+     *
+     * Making the type serializable is not on offer: `CustomFilter` carries a
+     * `KomgaSearchCondition`, which comes from the komga-client artifact. The
+     * filters are already kotlinx-serializable — that is how they are persisted
+     * and backed up — so a string is both cheap and complete.
+     */
+    private val shelfJson: String = shelfFilterJson.encodeToString(shelf)
+
+    /**
+     * The same shelf, unparsed, for as long as this process lives. Null after a
+     * restore, where [shelfJson] is all there is.
+     */
+    @Transient
+    private val loadedShelf: HomeScreenFilter? = shelf
+
+    override val key: String = "shelfDetail_${shelf.order}_${shelf.label}"
 
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
         val viewModelFactory = LocalViewModelFactory.current
+        val filter = remember(shelfJson) {
+            loadedShelf ?: shelfFilterJson.decodeFromString<HomeScreenFilter>(shelfJson)
+        }
         val vm = rememberScreenModel(key) { viewModelFactory.getShelfDetailViewModel(filter) }
         LaunchedEffect(Unit) { vm.initialize() }
 

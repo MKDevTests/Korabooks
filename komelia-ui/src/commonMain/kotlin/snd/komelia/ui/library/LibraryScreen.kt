@@ -484,10 +484,23 @@ class LibraryScreen(
             onDispose { seriesTabState.stopKomgaEventHandler() }
         }
 
-        val currentLetter = seriesTabState.filterState.state.collectAsState().value.letterFilter
+        val seriesFilterValue = seriesTabState.filterState.state.collectAsState().value
+        val currentLetter = seriesFilterValue.letterFilter
         val combinedBeforeContent: @Composable () -> Unit = {
             Column {
                 beforeContent()
+                // The same field the Books, Authors and Genres tabs have had all
+                // along. Series was the one tab where finding a title meant
+                // opening the filter panel to reach a search box that already
+                // existed — on a library of two thousand shelves, scrolling was
+                // the alternative.
+                OutlinedTextField(
+                    value = seriesFilterValue.searchTerm,
+                    onValueChange = seriesTabState.filterState::onSearchTermChange,
+                    label = { Text(LocalStrings.current.ui.search) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp),
+                )
                 LetterFilterBar(
                     selected = currentLetter,
                     onLetterClick = seriesTabState.filterState::onLetterFilterChange,

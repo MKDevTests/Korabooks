@@ -19,8 +19,11 @@ import snd.komga.client.common.Pageable
 import snd.komga.client.common.PatchValue
 import snd.komga.client.common.Sort
 import snd.komga.client.library.KomgaLibraryId
+import snd.komga.client.search.KomgaSearchCondition
+import snd.komga.client.search.KomgaSearchOperator
 import snd.komga.client.series.KomgaSeries
 import snd.komga.client.series.KomgaSeriesId
+import snd.komga.client.series.KomgaSeriesSearch
 import snd.komga.client.sse.KomgaEvent
 import snd.komga.client.user.KomgaUserId
 import kotlin.time.Clock
@@ -119,10 +122,26 @@ class OfflineCollectionsApi(
     ): Page<KomgaSeries> {
         val collection = collectionRepository.find(id) ?: return Page.empty()
         val userId = offlineUserId.value
-        val series = collection.seriesIds.mapNotNull { seriesDtoRepository.find(it, userId) }
+
+        // Two queries, not one per member. This used to call find() per series id,
+        // and each of those is the full series DTO query — metadata, aggregation,
+        // genres, tags. A collection of thirty series meant thirty of them, and
+        // the Collections tab fired that once per visible card to draw a progress
+        // bar. One search on collection membership replaces the lot.
+        val members = seriesDtoRepository.findAll(
+            search = KomgaSeriesSearch(
+                condition = KomgaSearchCondition.CollectionId(KomgaSearchOperator.Is(id)),
+            ),
+            userId = userId,
+            pageRequest = KomgaPageRequest(unpaged = true),
+        ).content
+
+        // Restore the reader's order, which SQL cannot express: it lives in the
+        // membership row, not in anything the series search knows about.
+        val byId = members.associateBy { it.id }
         val ordered =
-            if (collection.ordered) series
-            else series.sortedBy { it.metadata.titleSort.lowercase() }
+            if (collection.ordered) collection.seriesIds.mapNotNull { byId[it] }
+            else members.sortedBy { it.metadata.titleSort.lowercase() }
 
         val request = pageRequest ?: KomgaPageRequest()
         val size = request.size ?: 20

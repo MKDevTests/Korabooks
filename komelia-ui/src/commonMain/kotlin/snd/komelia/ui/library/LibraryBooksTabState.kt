@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.unit.Dp
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -77,6 +78,9 @@ class LibraryBooksTabState(
     var searchTerm by mutableStateOf("")
         private set
 
+    /** The pending debounced search, cancelled by the next keystroke. */
+    private var searchJob: Job? = null
+
     /** Set by the Authors tab: the books of one person, shown as a normal grid. */
     var authorFilter by mutableStateOf<String?>(null)
         private set
@@ -130,9 +134,21 @@ class LibraryBooksTabState(
         screenModelScope.launch { load(1) }
     }
 
+    /**
+     * Typing waits [SEARCH_DEBOUNCE_MS]; the letter chips next to it do not.
+     *
+     * One query per character meant re-reading a 10 561-row table while the
+     * reader was still typing. Cancelling the pending job rather than debouncing
+     * a flow, because this tab holds its filters as Compose state and has no
+     * flow to hang a `debounce` on.
+     */
     fun onSearchChange(term: String) {
         searchTerm = term
-        screenModelScope.launch { load(1) }
+        searchJob?.cancel()
+        searchJob = screenModelScope.launch {
+            delay(SEARCH_DEBOUNCE_MS)
+            load(1)
+        }
     }
 
     /**
@@ -148,6 +164,9 @@ class LibraryBooksTabState(
             letterFilter = null
             searchTerm = ""
         }
+        // Both of these clear the search box, so a debounce still in flight would
+        // fire a second, identical query a third of a second later.
+        searchJob?.cancel()
         screenModelScope.launch { load(1) }
     }
 
@@ -156,6 +175,7 @@ class LibraryBooksTabState(
         searchTerm = ""
         authorFilter = null
         sortOrder = Sort.TITLE_ASC
+        searchJob?.cancel()
         screenModelScope.launch { load(1) }
     }
 

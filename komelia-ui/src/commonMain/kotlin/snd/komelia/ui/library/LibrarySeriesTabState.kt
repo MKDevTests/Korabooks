@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
@@ -76,6 +77,15 @@ private const val MAX_BARREN_RANDOM_DRAWS = 3
  * It is an opaque sentinel that cannot collide with a real Komga library id.
  */
 private val GENRE_FILTER_STORAGE_KEY = KomgaLibraryId("__kora_genre_filter__")
+
+/**
+ * How long a search field waits before querying, in the Series and Books grids.
+ *
+ * Shared so the two tabs cannot drift apart. 300 ms is what the Collections tab
+ * and the global search already use; the number matters less than the fact that
+ * a keystroke no longer costs a query over the whole library.
+ */
+internal const val SEARCH_DEBOUNCE_MS = 300L
 
 /**
  * Cache of each library's first series page, keyed by library id (or
@@ -256,7 +266,21 @@ class LibrarySeriesTabState(
             // Subscribe to filter changes only AFTER the restore + initial load.
             // The restored filter is already applied and loaded, so drop(1) won't
             // re-fire for it — this avoids a second redundant page load per open.
-            filterState.state.drop(1).onEach { current ->
+            //
+            // Typing waits; everything else does not. The search field emits one
+            // state per character, and each one used to cost a paged query over
+            // 7 000 series *plus* a JSON encode written to the settings database —
+            // seven of each for "skyward". A letter chip or a sort toggle is a
+            // single deliberate tap and must still feel instant, so only a changed
+            // search term earns the delay.
+            // Emptying the box is a tap, not typing, so it goes through at once —
+            // the same rule the global search field applies.
+            var previousSearch = filterState.state.value.searchTerm
+            filterState.state.drop(1).debounce { current ->
+                val typing = current.searchTerm != previousSearch && current.searchTerm.isNotBlank()
+                previousSearch = current.searchTerm
+                if (typing) SEARCH_DEBOUNCE_MS else 0L
+            }.onEach { current ->
                 loadSeriesPage(1)
                 // Persist user-modified filters: per library normally, or under the
                 // shared genre key when this is a genre drill-down.

@@ -13,6 +13,7 @@ import org.jetbrains.exposed.v1.jdbc.andWhere
 import org.jetbrains.exposed.v1.jdbc.select
 import org.jetbrains.exposed.v1.jdbc.union
 import snd.komelia.db.offline.tables.OfflineBookMetadataAggregationAuthorTable
+import snd.komelia.db.offline.tables.OfflineCollectionSeriesTable
 import snd.komelia.db.offline.tables.OfflineBookMetadataAggregationTable
 import snd.komelia.db.offline.tables.OfflineBookMetadataAggregationTagTable
 import snd.komelia.db.offline.tables.OfflineReadProgressSeriesTable
@@ -22,6 +23,7 @@ import snd.komelia.db.offline.tables.OfflineSeriesMetadataTable
 import snd.komelia.db.offline.tables.OfflineSeriesMetadataTagTable
 import snd.komelia.db.offline.tables.OfflineSeriesTable
 import snd.komga.client.book.KomgaReadStatus
+import snd.komga.client.collection.KomgaCollectionId
 import snd.komga.client.search.KomgaSearchCondition
 import snd.komga.client.search.KomgaSearchOperator
 import snd.komga.client.search.KomgaSearchOperator.IsFalse
@@ -181,9 +183,36 @@ class SeriesSearchHelper(
         return this.operator.toCondition(field = OfflineSeriesMetadataTable.ageRating) to setOf(RequiredJoin.SeriesMetadata)
     }
 
-    //TODO
+    /**
+     * Membership, as a subquery rather than a join.
+     *
+     * This used to answer `Op.TRUE`, which does not mean "no collection matches"
+     * — it means **every series matches**, so asking for one collection's series
+     * handed back the whole library. The stub predated any collection storage;
+     * there is one now.
+     *
+     * A subquery and not [RequiredJoin.Collection] on purpose: the join handling
+     * in `ExposedSeriesDtoRepository` is a `when` mapping every `RequiredJoin` to
+     * `Unit`, so wiring a real join would mean restructuring the query the whole
+     * library screen runs on. `COLLECTION_SERIES (collection_id, series_id)` is
+     * indexed and covering, so the subquery is an index lookup regardless.
+     */
     private fun KomgaSearchCondition.CollectionId.toCollectionIdCondition(): Pair<Op<Boolean>, Set<RequiredJoin>> {
-        return Op.TRUE to emptySet()
+        val seriesId = OfflineSeriesTable.id
+        val members = OfflineCollectionSeriesTable
+
+        val inCollection = { collectionId: KomgaCollectionId ->
+            members.select(members.seriesId)
+                .where { members.collectionId.eq(collectionId.value) }
+        }
+        // Only Is / IsNot: a collection id is never null, so unlike Genre or Tag
+        // this operator has no null variants to answer.
+        val op = when (val operator = this.operator) {
+            is KomgaSearchOperator.Is -> seriesId.inSubQuery(inCollection(operator.value))
+            is KomgaSearchOperator.IsNot -> seriesId.notInSubQuery(inCollection(operator.value))
+        }
+
+        return op to emptySet()
     }
 
     private fun KomgaSearchCondition.Complete.toCompleteCondition(): Pair<Op<Boolean>, Set<RequiredJoin>> {

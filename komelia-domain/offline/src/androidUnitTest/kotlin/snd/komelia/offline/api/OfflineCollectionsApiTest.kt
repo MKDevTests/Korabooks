@@ -11,8 +11,13 @@ import snd.komga.client.collection.KomgaCollectionId
 import snd.komga.client.collection.KomgaCollectionUpdateRequest
 import snd.komga.client.common.KomgaPageRequest
 import snd.komga.client.common.Page
+import snd.komga.client.common.Page.Companion.page
+import snd.komga.client.common.Pageable
 import snd.komga.client.common.PatchValue
+import snd.komga.client.common.Sort
 import snd.komga.client.library.KomgaLibraryId
+import snd.komga.client.search.KomgaSearchCondition
+import snd.komga.client.search.KomgaSearchOperator
 import snd.komga.client.series.KomgaSeries
 import snd.komga.client.series.KomgaSeriesBookMetadata
 import snd.komga.client.series.KomgaSeriesId
@@ -109,7 +114,7 @@ class OfflineCollectionsApiTest {
     @Test
     fun keepsTheReadersOrderWhenTheCollectionIsOrdered() = runTest {
         val repository = FakeCollectionRepository()
-        val series = FakeSeriesDtoRepository(series("c", "Cendres"), series("a", "Abîmes"))
+        val series = FakeSeriesDtoRepository(repository, listOf(series("c", "Cendres"), series("a", "Abîmes")))
         val api = api(repository, series)
         val created = api.addOne(KomgaCollectionCreateRequest("Ordonnée", true, listOf(id("c"), id("a"))))
 
@@ -121,7 +126,7 @@ class OfflineCollectionsApiTest {
     @Test
     fun sortsByTitleWhenTheCollectionIsNot() = runTest {
         val repository = FakeCollectionRepository()
-        val series = FakeSeriesDtoRepository(series("c", "Cendres"), series("a", "Abîmes"))
+        val series = FakeSeriesDtoRepository(repository, listOf(series("c", "Cendres"), series("a", "Abîmes")))
         val api = api(repository, series)
         val created = api.addOne(KomgaCollectionCreateRequest("Libre", false, listOf(id("c"), id("a"))))
 
@@ -133,7 +138,7 @@ class OfflineCollectionsApiTest {
     @Test
     fun forgetsASeriesTheMirrorNoLongerHas() = runTest {
         val repository = FakeCollectionRepository()
-        val series = FakeSeriesDtoRepository(series("a", "Abîmes"))
+        val series = FakeSeriesDtoRepository(repository, listOf(series("a", "Abîmes")))
         val api = api(repository, series)
         val created = api.addOne(KomgaCollectionCreateRequest("Après resynchro", false, listOf(id("a"), id("gone"))))
 
@@ -147,7 +152,8 @@ class OfflineCollectionsApiTest {
     fun countsEveryMemberEvenWhenItHandsBackOnePage() = runTest {
         val repository = FakeCollectionRepository()
         val series = FakeSeriesDtoRepository(
-            series("a", "Un"), series("b", "Deux"), series("c", "Trois"),
+            repository,
+            listOf(series("a", "Un"), series("b", "Deux"), series("c", "Trois")),
         )
         val api = api(repository, series)
         val created = api.addOne(
@@ -216,7 +222,19 @@ class OfflineCollectionsApiTest {
         }
     }
 
-    private class FakeSeriesDtoRepository(vararg series: KomgaSeries) : OfflineSeriesDtoRepository {
+    /**
+     * Answers a collection-membership search the way the real repository does:
+     * the series it knows about that the collection lists, in no particular
+     * order — SQL gives no promise there, and the api is what restores order.
+     *
+     * A fake that ignored the condition would let the ordering tests pass while
+     * the real query returned the whole library, which is exactly the bug the
+     * `Op.TRUE` stub had.
+     */
+    private class FakeSeriesDtoRepository(
+        private val collections: OfflineCollectionRepository? = null,
+        private val series: List<KomgaSeries> = emptyList(),
+    ) : OfflineSeriesDtoRepository {
         private val known = series.associateBy { it.id }
 
         override suspend fun get(seriesId: KomgaSeriesId, userId: KomgaUserId) =
@@ -231,7 +249,27 @@ class OfflineCollectionsApiTest {
             search: KomgaSeriesSearch,
             userId: KomgaUserId,
             pageRequest: KomgaPageRequest,
-        ) = Page.empty<KomgaSeries>()
+        ): Page<KomgaSeries> {
+            val condition = search.condition as? KomgaSearchCondition.CollectionId
+                ?: return Page.empty()
+            val operator = condition.operator as? KomgaSearchOperator.Is
+                ?: return Page.empty()
+            val members = collections?.find(operator.value)?.seriesIds.orEmpty()
+            // Shuffled on purpose: nothing may rely on the order this returns.
+            val content = members.mapNotNull { known[it] }.reversed()
+            return page(
+                content,
+                Pageable(
+                    Sort(sorted = false, unsorted = true, empty = content.isEmpty()),
+                    pageNumber = 0,
+                    pageSize = maxOf(content.size, 20),
+                    offset = 0,
+                    paged = false,
+                    unpaged = true,
+                ),
+                content.size,
+            )
+        }
 
         override suspend fun findAllRecentlyUpdated(
             search: KomgaSeriesSearch,

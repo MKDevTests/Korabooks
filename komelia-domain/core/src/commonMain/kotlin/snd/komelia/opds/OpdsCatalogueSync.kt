@@ -170,6 +170,15 @@ class OpdsCatalogueSync(
         catalogueUrl: String,
         catalogueName: String,
         resume: Boolean = false,
+        /**
+         * Regroup every series whatever the mirror already says.
+         *
+         * The escape hatch for the one thing counting books cannot detect: a
+         * grouping that was wrong when it was made, or a volume swapped for
+         * another without the total moving. Costs one request per series, which
+         * is the whole of a long sync — so it is asked for, never assumed.
+         */
+        force: Boolean = false,
         onProgress: (OpdsSyncProgress) -> Unit = {},
     ): OpdsSyncResult {
         val libraryId = writer.library(catalogueUrl, catalogueName)
@@ -186,6 +195,16 @@ class OpdsCatalogueSync(
         var books = 0
         var covers = 0
 
+        // What the mirror holds before we touch it, read in one pass. Two things
+        // come out of it and both decide how long this sync takes: which series
+        // are already grouped (so the books pass stops tearing them apart), and
+        // how many books there were (so the grouping pass can be skipped when
+        // the catalogue has not moved).
+        val before = writer.seriesBookCounts(libraryId)
+        val grouped = before.filterValues { it > 1 }.keys
+        val booksBefore = before.values.sum()
+        logger.info { "OPDS mirror holds $booksBefore books in ${before.size} shelves, ${grouped.size} grouped" }
+
         // Buffered, because a transaction costs far more than the seven inserts
         // a shelf needs. One at a time the phone wrote twenty-five books a
         // minute while the network delivered twelve hundred.
@@ -195,8 +214,13 @@ class OpdsCatalogueSync(
         suspend fun flush(title: String) {
             if (pending.isEmpty()) return
             currentCoroutineContext().ensureActive()
-            writer.write(pending, pendingCovers)
-            kept += pending.map { it.series.id }
+            // The series whose books kept their parent are kept too: they were
+            // never written this pass, and prune only spares what it is told.
+            // The standalone shelves that were deliberately not created are the
+            // one thing not claimed — they do not exist to be spared.
+            val written = writer.write(pending, pendingCovers, grouped)
+            kept += written.preserved
+            kept += pending.map { it.series.id } - written.skipped
             books += pending.sumOf { it.books.size }
             covers += pendingCovers.size
             val last = pending.last().series
@@ -252,7 +276,25 @@ class OpdsCatalogueSync(
         // library — the book rows keep their identity and change parent — so a
         // grouping pass interrupted halfway leaves a library that is merely
         // less tidy, never one that is missing something.
-        coroutineScope {
+        //
+        // Skipped outright when the catalogue holds exactly the books it held
+        // last time and the shelves are already grouped. Membership cannot have
+        // changed without a book appearing or disappearing, and now that the
+        // books pass leaves grouped series alone there is nothing to repair
+        // either. This is the difference between forty-five minutes and five.
+        //
+        // Deliberately counted rather than trusted: [force] exists for the case
+        // this reasoning cannot cover — a grouping that was wrong to begin with,
+        // or a book swapped for another one-for-one.
+        val settled = grouped.isNotEmpty() && books == booksBefore && !force
+        if (settled) {
+            logger.info {
+                "OPDS grouping skipped: $books books, unchanged, ${grouped.size} shelves already grouped"
+            }
+            kept += before.keys
+        }
+
+        if (!settled) coroutineScope {
             val queue = Channel<OpdsShelf>(capacity = QUEUE_DEPTH)
             val grouping = launch {
                 for (shelf in queue) {
@@ -274,15 +316,14 @@ class OpdsCatalogueSync(
                 }
             }
 
-            // What the mirror already holds, read once — one pass over the
-            // library rather than a question per series, the whole point being
-            // to stop doing things per series.
-            val counts = writer.seriesBookCounts(libraryId)
+            // Read before the books pass, and still true: that pass no longer
+            // moves a book out of a grouped series, so the counts it saw hold.
+            val counts = before
 
             // What a stopped pass already achieved. A resumed pass trusts every
             // grouped shelf on sight; that is the difference between the two
             // buttons, and re-buying them would make one of them do nothing.
-            val already = if (resume) counts.filterValues { it > 1 }.keys else emptySet()
+            val already = if (resume) grouped else emptySet()
             if (already.isNotEmpty()) {
                 logger.info { "OPDS resuming: ${already.size} series already grouped" }
                 kept += already

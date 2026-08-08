@@ -136,6 +136,22 @@ class CatalogueSettingsViewModel(
         }
     }
 
+    /**
+     * Opens every series shelf again, whatever the mirror already says.
+     *
+     * The long way round, and the only one left for a grouping that was wrong
+     * when it was made: [sync] now skips the grouping pass when the catalogue
+     * holds exactly the books it held last time, which is right almost always
+     * and cannot see a volume swapped for another. Hours on a real library, so
+     * it is a separate button rather than the default.
+     */
+    fun regroupAll() {
+        guarded {
+            catalogue.save(url, username, password)
+            catalogue.startSync(force = true)
+        }
+    }
+
     fun cancelSync() = catalogue.cancelSync()
 
     // describe() moved next to OpdsSyncProgress: the notification says the same

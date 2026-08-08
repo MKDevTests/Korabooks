@@ -48,10 +48,12 @@ class CatalogueSettingsScreen : Screen {
                         "dernière fois, et s'arrête dès qu'il ne trouve rien de neuf. " +
                         "« Reprendre » continue une synchronisation interrompue sans " +
                         "relire les séries déjà regroupées. " +
-                        "« Tout resynchroniser » relit tous les livres, et parmi les " +
-                        "séries celles dont la taille a changé : le catalogue annonce " +
-                        "combien de tomes chaque série tient, et une série de trois " +
-                        "tomes qui en annonce toujours trois n'a rien à apprendre. " +
+                        "« Tout resynchroniser » relit tous les livres (4-5 min) et ne " +
+                        "rouvre les séries que si le catalogue a gagné ou perdu des " +
+                        "livres — sinon rien n'a pu changer de série. " +
+                        "« Regrouper de zéro » rouvre les 1 700 séries une par une : " +
+                        "comptez une bonne demi-heure, et gardez-le pour un " +
+                        "regroupement visiblement faux. " +
                         "La synchronisation continue si vous quittez cet écran.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -124,11 +126,16 @@ class CatalogueSettingsScreen : Screen {
                         Button(onClick = vm::syncRecent, enabled = !vm.busy && vm.url.isNotBlank()) {
                             Text("Nouveautés")
                         }
+                        TextButton(onClick = vm::sync, enabled = !vm.busy && vm.url.isNotBlank()) {
+                            Text("Tout resynchroniser")
+                        }
                         TextButton(onClick = vm::resumeSync, enabled = !vm.busy && vm.url.isNotBlank()) {
                             Text("Reprendre")
                         }
-                        TextButton(onClick = vm::sync, enabled = !vm.busy && vm.url.isNotBlank()) {
-                            Text("Tout resynchroniser")
+                        // Last, and deliberately dull: it is the one that costs
+                        // hours, and nobody should reach for it by accident.
+                        TextButton(onClick = vm::regroupAll, enabled = !vm.busy && vm.url.isNotBlank()) {
+                            Text("Regrouper de zéro")
                         }
                     }
                     if (vm.busy || vm.syncing) CircularProgressIndicator(Modifier.padding(start = 4.dp))

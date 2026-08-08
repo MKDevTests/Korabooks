@@ -34,6 +34,21 @@ import kotlin.time.Instant
  * catalogue is mirrored whole — five hundred books browsable on a phone holding
  * none of them — and a book only gains a file when the reader asks for it.
  */
+/**
+ * What a batch of shelves actually did to the mirror.
+ *
+ * Both sets exist for pruning, which deletes every shelf a sync did not claim.
+ * [preserved] must be claimed even though nothing was written to it, and
+ * [skipped] must *not* be — claiming a standalone shelf that was deliberately
+ * not created would report a library larger than the one on disk.
+ */
+data class MirrorWriteResult(
+    /** Series that already held these books, and were left exactly as they were. */
+    val preserved: Set<KomgaSeriesId> = emptySet(),
+    /** Shelves not written, every one of their books having kept its series. */
+    val skipped: Set<KomgaSeriesId> = emptySet(),
+)
+
 class OpdsMirrorWriter(private val repositories: OfflineRepositories) {
 
     /**
@@ -103,22 +118,66 @@ class OpdsMirrorWriter(private val repositories: OfflineRepositories) {
      * Still batches rather than one transaction for the catalogue: an
      * interrupted sync should leave a smaller library, never a broken one.
      */
-    suspend fun write(batch: List<MappedShelf>, covers: Map<KomgaBookId, String> = emptyMap()) {
-        if (batch.isEmpty()) return
+    suspend fun write(
+        batch: List<MappedShelf>,
+        covers: Map<KomgaBookId, String> = emptyMap(),
+        /**
+         * Series the mirror already holds and that must survive this write —
+         * pass [seriesBookCounts] filtered to more than one book. Empty means
+         * the old behaviour: every book lands on the shelf it was mapped onto.
+         */
+        grouped: Set<KomgaSeriesId> = emptySet(),
+    ): MirrorWriteResult {
+        if (batch.isEmpty()) return MirrorWriteResult()
+
+        // The books of this batch that already belong to a real series.
+        //
+        // This is the whole reason a full sync used to cost forty-five minutes,
+        // and it was not a performance problem at all. The books pass maps every
+        // book onto a shelf of its own, and writing that shelf wrote the book
+        // with its standalone parent — unconditionally. So each full sync tore
+        // the entire library back apart, and the grouping pass that followed,
+        // one request per series against a server answering one at a time, was
+        // spending forty minutes repairing damage done four minutes earlier.
+        //
+        // Keeping the existing parent costs one query per five hundred books and
+        // makes the grouping pass what it always claimed to be: the optional
+        // half.
+        val parents: Map<KomgaBookId, KomgaSeriesId> =
+            if (grouped.isEmpty()) emptyMap()
+            else batch.flatMap { shelf -> shelf.books.map { it.id } }
+                .chunked(IDS_PER_QUERY)
+                .flatMap { repositories.bookRepository.findIn(it) }
+                .mapNotNull { book ->
+                    book.seriesId.takeIf { it in grouped }?.let { book.id to it }
+                }
+                .toMap()
+
+        // Shelves nobody wrote, so the caller does not count them as library and
+        // does not ask prune to spare something that is not there.
+        val skipped = batch
+            .filter { shelf -> shelf.books.isNotEmpty() && shelf.books.all { it.id in parents } }
+            .map { it.series.id }
+            .toSet()
+
         repositories.transactionTemplate.execute {
-            for (mapped in batch) writeShelf(mapped, covers)
+            for (mapped in batch) writeShelf(mapped, covers, parents)
             // Book metadata is the heaviest row a book has — a title and a
             // number, plus authors, tags and links in three tables of their
             // own. Written per book that is seven statements each; hoisted out
-            // of the loop the whole batch costs seven.
+            // of the loop the whole batch costs seven. Written for every book,
+            // including the ones that kept their series: the point of re-reading
+            // a catalogue is to pick up metadata that changed.
             repositories.bookMetadataRepository.saveAll(
                 batch.flatMap { it.books }.map { it.metadata.toOfflineBookMetadata(it.id) }
             )
         }
+        return MirrorWriteResult(preserved = parents.values.toSet(), skipped = skipped)
     }
 
-    suspend fun write(mapped: MappedShelf, covers: Map<KomgaBookId, String> = emptyMap()) =
+    suspend fun write(mapped: MappedShelf, covers: Map<KomgaBookId, String> = emptyMap()) {
         write(listOf(mapped), covers)
+    }
 
     /** Whether the mirror already holds this book — the whole of the diff check. */
     suspend fun hasBook(id: KomgaBookId): Boolean = repositories.bookRepository.exists(id)
@@ -200,11 +259,23 @@ class OpdsMirrorWriter(private val repositories: OfflineRepositories) {
         }
     }
 
-    private suspend fun writeShelf(mapped: MappedShelf, covers: Map<KomgaBookId, String>) {
-        writeSeries(mapped)
+    private suspend fun writeShelf(
+        mapped: MappedShelf,
+        covers: Map<KomgaBookId, String>,
+        parents: Map<KomgaBookId, KomgaSeriesId> = emptyMap(),
+    ) {
+        // Every book here already sits in a series: this shelf is the standalone
+        // one the books pass would recreate, and writing it would both resurrect
+        // a shelf that prune has to clean up again and pull the books back out.
+        val allKept = mapped.books.isNotEmpty() && mapped.books.all { it.id in parents }
+        if (!allKept) writeSeries(mapped)
+
         for (book in mapped.books) {
-            writeBook(book, covers[book.id])
+            val parent = parents[book.id]
+            writeBook(if (parent != null) book.copy(seriesId = parent) else book, covers[book.id])
         }
+        if (allKept) return
+
         covers[mapped.books.firstOrNull()?.id]?.let { href ->
             repositories.thumbnailSeriesRepository.save(
                 OfflineThumbnailSeries(

@@ -315,15 +315,49 @@ sudo mkdir -p /mnt/l && sudo mount -t drvfs 'L:' /mnt/l
    source du flou est maintenant le fond seul. Voir le commit `6318f682` : le
    lecteur d'images n'était pas touché, sa source est du contenu Compose.
 
+6. ~~**Collections manuelles**~~ — **livrées** (2026-08-08, sur `books/scaffold`,
+   15 fichiers). `OfflineCollectionsApi` n'était qu'un bouchon :
+   `Page.empty()` et `NotImplementedError`. Tout le reste existait déjà —
+   onglet, dialogues, actions groupées, jusqu'à un `RequiredJoin.Collection`
+   qui attendait un stockage.
+   - **Aucune migration.** `V1__offline_mode.sql` crée `COLLECTION` et
+     `COLLECTION_SERIES` **depuis toujours** : le schéma Komga a été porté en
+     entier puis laissé inutilisé. Une `V3__collections.sql` avait été écrite
+     avant de le voir ; elle aurait planté au premier lancement (« table
+     COLLECTION already exists »). **Avant d'ajouter une table à la base
+     `offline`, chercher si V1 ne la contient pas déjà** — elle contient aussi
+     `READLIST`, entre autres.
+   - `series_count` (V1, NOT NULL sans défaut) est écrite mais **jamais lue** :
+     le compte affiché vient d'une jointure sur `SERIES`, donc une série
+     supprimée par une resynchro cesse de compter sans que personne ait à
+     penser à cette colonne.
+   - **Trois boutons étaient invisibles** et le sont plus : « Ajouter à une
+     collection » (menu série, menu one-shot, actions groupées) et « Retirer de
+     la collection » vivaient dans des blocs `!isOffline && isAdmin`, et
+     Korabooks tourne **toujours** en mode hors-ligne. Les **listes de lecture**
+     restent derrière cette garde, à raison : `OfflineReadListApi` est encore un
+     bouchon.
+   - 10 tests sur l'API (ordre, pagination, sémantique des patchs, oubli des
+     séries disparues), canari d'usage vérifié.
+7. ~~**Scroll rapide A-Z et barre d'actions collante**~~ — **déjà là**, jamais
+   à faire. `LetterFilterBar` (`Tout · # · A…Z`) est branchée sur Séries et
+   Livres ; un ascenseur serait un doublon inférieur, la liste étant paginée
+   côté serveur. `BulkActionsContainer` et `BottomPopupBulkActionsPanel` sont
+   des `Popup` ancrés aux bords de l'écran, donc déjà collants, sur 7 écrans.
+   Ces deux points ne venaient pas du code, seulement de notes de session.
+
 ### Reste vraiment à faire
 
-1. **LA SEULE CHOSE QUI RESTE SUR LES GENRES : lancer « Tout resynchroniser ».**
-   Jamais fait à ce jour. Le miroir porte encore ses 1 191 genres, dont 1 052
-   périmés, et il manque **75 genres réels** que rien d'autre ne peut rapporter
-   (§5). Compter plusieurs heures. Tant que ce n'est pas fait, l'écran Genres
-   montre l'ancien miroir — ce n'est pas un bug, c'est cette étape qui manque.
-2. Collections manuelles.
-3. Recherche plein texte dans le livre.
+1. **Genres : trancher quelle base Calibre-Web sert vraiment.** ⚠️ Le point
+   « lancer Tout resynchroniser » était **faux** et a été retiré : la
+   rétractation du §5 (2026-08-08) montre qu'une resynchro complète a déjà
+   tourné et que le miroir affiche toujours 1 191 genres, **parce que le serveur
+   les publie**. Une resynchro ne raccourcira donc jamais la liste. Ce qui reste
+   ouvert : le miroir compte 10 561 livres, `L:\Livres_Calibre\metadata.db` en
+   compte 10 542 — ce n'est pas la même bibliothèque. Regarder la configuration
+   de Calibre-Web, pas le partage réseau. L'écran `Réglages → Genres` fait le
+   tri une fois la question réglée ; il est livré et fonctionnel.
+2. Recherche plein texte dans le livre.
 
 ### Mis de côté
 

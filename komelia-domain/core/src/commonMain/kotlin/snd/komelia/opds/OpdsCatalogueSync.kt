@@ -158,23 +158,24 @@ class OpdsCatalogueSync(
     }
 
     /**
-     * Reads a whole catalogue.
+     * Reads a whole catalogue: every book, and the series not yet grouped.
      *
-     * [resume] picks the grouping pass up where a stopped one left off instead
-     * of paying for it again. It is a separate button rather than the default
-     * because the two are different questions: a resumed pass trusts what the
-     * mirror already says about a shelf, and re-reading a catalogue precisely
-     * to find out whether that is still true is what the full one is for.
+     * Grouping a shelf costs one request against a server that answers one at a
+     * time, so a shelf already grouped is left alone — always, not on request.
+     * There used to be a `resume` flag for that and a default that re-read all
+     * of them; the default meant that adding one book to the catalogue cost
+     * thirty minutes, which is not a choice anybody would make knowingly. What
+     * `resume` did is now simply what this does, and an interrupted sync is
+     * continued by running it again.
      */
     suspend fun sync(
         catalogueUrl: String,
         catalogueName: String,
-        resume: Boolean = false,
         /**
-         * Regroup every series whatever the mirror already says.
+         * Regroup every series, including the ones already grouped.
          *
-         * The escape hatch for the one thing counting books cannot detect: a
-         * grouping that was wrong when it was made, or a volume swapped for
+         * The escape hatch for the two things this cannot otherwise see: a
+         * grouping that was wrong when it was made, and a volume swapped for
          * another without the total moving. Costs one request per series, which
          * is the whole of a long sync — so it is asked for, never assumed.
          */
@@ -320,12 +321,12 @@ class OpdsCatalogueSync(
             // moves a book out of a grouped series, so the counts it saw hold.
             val counts = before
 
-            // What a stopped pass already achieved. A resumed pass trusts every
-            // grouped shelf on sight; that is the difference between the two
-            // buttons, and re-buying them would make one of them do nothing.
-            val already = if (resume) grouped else emptySet()
+            // Every shelf already grouped, left alone unless asked otherwise.
+            // Two books never landed on one shelf by accident, so this is not a
+            // guess: it is the record of a grouping pass that already happened.
+            val already = if (force) emptySet() else grouped
             if (already.isNotEmpty()) {
-                logger.info { "OPDS resuming: ${already.size} series already grouped" }
+                logger.info { "OPDS ${already.size} series already grouped — left alone" }
                 kept += already
             }
 

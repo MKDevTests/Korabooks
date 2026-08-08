@@ -122,28 +122,17 @@ class CatalogueSettingsViewModel(
     }
 
     /**
-     * Carries on with the grouping a stopped sync did not finish.
-     *
-     * The grouping pass is one request per series and thousands of them, and a
-     * server that answers one at a time turns that into hours. Starting over
-     * was the only way back into it, so an interrupted sync meant paying the
-     * whole thing again — this one leaves alone every shelf already grouped.
-     */
-    fun resumeSync() {
-        guarded {
-            catalogue.save(url, username, password)
-            catalogue.startSync(resume = true)
-        }
-    }
-
-    /**
      * Opens every series shelf again, whatever the mirror already says.
      *
      * The long way round, and the only one left for a grouping that was wrong
-     * when it was made: [sync] now skips the grouping pass when the catalogue
-     * holds exactly the books it held last time, which is right almost always
-     * and cannot see a volume swapped for another. Hours on a real library, so
-     * it is a separate button rather than the default.
+     * when it was made: [sync] leaves grouped shelves alone and skips the
+     * grouping pass entirely when the catalogue holds exactly the books it held
+     * last time — right almost always, and blind to a volume swapped for
+     * another. Half an hour on a real library, so it is asked for.
+     *
+     * `resumeSync` used to sit between the two and no longer needs to exist:
+     * leaving grouped shelves alone is what [sync] does now, so an interrupted
+     * sync is continued by pressing the same button again.
      */
     fun regroupAll() {
         guarded {

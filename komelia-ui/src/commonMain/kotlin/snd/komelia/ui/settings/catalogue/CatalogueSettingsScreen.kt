@@ -44,16 +44,14 @@ class CatalogueSettingsScreen : Screen {
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Text(
-                    "« Nouveautés » ne lit que ce que le catalogue a ajouté depuis la " +
-                        "dernière fois, et s'arrête dès qu'il ne trouve rien de neuf. " +
-                        "« Reprendre » continue une synchronisation interrompue sans " +
-                        "relire les séries déjà regroupées. " +
-                        "« Tout resynchroniser » relit tous les livres (4-5 min) et ne " +
-                        "rouvre les séries que si le catalogue a gagné ou perdu des " +
-                        "livres — sinon rien n'a pu changer de série. " +
-                        "« Regrouper de zéro » rouvre les 1 700 séries une par une : " +
-                        "comptez une bonne demi-heure, et gardez-le pour un " +
-                        "regroupement visiblement faux. " +
+                    "« Nouveaux tomes » (quelques secondes) ajoute les tomes parus " +
+                        "depuis la dernière fois et ne touche pas aux séries.\n" +
+                        "« Tomes + séries » (4-5 min) relit tous les tomes et range " +
+                        "dans leur série ceux qui ne le sont pas encore. C'est celui " +
+                        "à utiliser, y compris pour reprendre une synchro arrêtée.\n" +
+                        "« Refaire toutes les séries » (~30 min) rouvre chaque série " +
+                        "une par une. À garder pour un rangement visiblement faux : " +
+                        "c'est le seul qui voie un tome remplacé par un autre.\n" +
                         "La synchronisation continue si vous quittez cet écran.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -123,19 +121,20 @@ class CatalogueSettingsScreen : Screen {
                     if (vm.syncing) {
                         Button(onClick = vm::cancelSync) { Text("Arrêter") }
                     } else {
+                        // Named after what they touch, in the order of what they
+                        // cost. "Tout resynchroniser" / "Reprendre" said nothing
+                        // about which of books and series a press would read,
+                        // which is the only question a reader actually has.
                         Button(onClick = vm::syncRecent, enabled = !vm.busy && vm.url.isNotBlank()) {
-                            Text("Nouveautés")
+                            Text("Nouveaux tomes")
                         }
                         TextButton(onClick = vm::sync, enabled = !vm.busy && vm.url.isNotBlank()) {
-                            Text("Tout resynchroniser")
-                        }
-                        TextButton(onClick = vm::resumeSync, enabled = !vm.busy && vm.url.isNotBlank()) {
-                            Text("Reprendre")
+                            Text("Tomes + séries")
                         }
                         // Last, and deliberately dull: it is the one that costs
-                        // hours, and nobody should reach for it by accident.
+                        // half an hour, and nobody should reach for it by accident.
                         TextButton(onClick = vm::regroupAll, enabled = !vm.busy && vm.url.isNotBlank()) {
-                            Text("Regrouper de zéro")
+                            Text("Refaire toutes les séries")
                         }
                     }
                     if (vm.busy || vm.syncing) CircularProgressIndicator(Modifier.padding(start = 4.dp))

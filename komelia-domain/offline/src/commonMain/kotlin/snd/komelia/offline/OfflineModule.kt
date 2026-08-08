@@ -29,6 +29,7 @@ import snd.komelia.offline.api.OfflineSettingsApi
 import snd.komelia.offline.api.OfflineTaskApi
 import snd.komelia.offline.api.OfflineUserApi
 import snd.komelia.offline.api.repository.OfflineBookDtoRepository
+import snd.komelia.offline.api.repository.OfflineCollectionRepository
 import snd.komelia.offline.api.repository.OfflineReferentialRepository
 import snd.komelia.offline.api.repository.OfflineSeriesDtoRepository
 import snd.komelia.offline.api.repository.RetainedGenreRepository
@@ -123,6 +124,7 @@ data class OfflineRepositories(
     val bookDtoRepository: OfflineBookDtoRepository,
     val referentialRepository: OfflineReferentialRepository,
     val retainedGenreRepository: RetainedGenreRepository,
+    val collectionRepository: OfflineCollectionRepository,
     val seriesDtoRepository: OfflineSeriesDtoRepository,
     val logJournalRepository: LogJournalRepository,
     val transactionTemplate: TransactionTemplate,
@@ -219,6 +221,22 @@ abstract class OfflineModule(
             .stateIn(moduleScope, SharingStarted.Eagerly, null)
 
 
+        // Built ahead of the api bundle: the collections api borrows its cover
+        // logic, which is the only place that knows a shelf takes its cover
+        // from one of its books.
+        val seriesApi = OfflineSeriesApi(
+            actions = actions,
+            seriesDtoRepository = repositories.seriesDtoRepository,
+            seriesThumbnailRepository = repositories.thumbnailSeriesRepository,
+            seriesRepository = repositories.seriesRepository,
+            libraryRepository = repositories.libraryRepository,
+            bookRepository = repositories.bookRepository,
+            thumbnailBookRepository = repositories.thumbnailBookRepository,
+            collectionRepository = repositories.collectionRepository,
+            offlineUserId = offlineUserId,
+            coverLoader = coverLoader,
+        )
+
         val komgaApi = OfflineKomgaApi(
             actuatorApi = OfflineActuatorApi(),
             announcementsApi = OfflineAnnouncementsApi(),
@@ -234,7 +252,13 @@ abstract class OfflineModule(
                 coverLoader = coverLoader,
                 catalogueDownloader = catalogueDownloader,
             ),
-            collectionsApi = OfflineCollectionsApi(),
+            collectionsApi = OfflineCollectionsApi(
+                collectionRepository = repositories.collectionRepository,
+                seriesDtoRepository = repositories.seriesDtoRepository,
+                offlineUserId = offlineUserId,
+                seriesCover = seriesApi::getDefaultThumbnail,
+                komgaEvents = komgaEvents,
+            ),
             fileSystemApi = OfflineFileSystemApi(),
             libraryApi = OfflineLibraryApi(
                 libraryRepository = repositories.libraryRepository,
@@ -246,17 +270,7 @@ abstract class OfflineModule(
             referentialApi = OfflineReferentialApi(
                 referentialRepository = repositories.referentialRepository
             ),
-            seriesApi = OfflineSeriesApi(
-                actions = actions,
-                seriesDtoRepository = repositories.seriesDtoRepository,
-                seriesThumbnailRepository = repositories.thumbnailSeriesRepository,
-                seriesRepository = repositories.seriesRepository,
-                libraryRepository = repositories.libraryRepository,
-                bookRepository = repositories.bookRepository,
-                thumbnailBookRepository = repositories.thumbnailBookRepository,
-                offlineUserId = offlineUserId,
-                coverLoader = coverLoader,
-            ),
+            seriesApi = seriesApi,
             settingsApi = OfflineSettingsApi(),
             tasksApi = OfflineTaskApi(),
             userApi = OfflineUserApi(

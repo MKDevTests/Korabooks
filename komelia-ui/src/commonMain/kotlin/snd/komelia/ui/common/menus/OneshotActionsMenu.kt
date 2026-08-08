@@ -149,12 +149,14 @@ fun OneshotActionsMenu(
                 leadingIcon = { Icon(Icons.Rounded.Add, null) },
                 onClick = { showAddToReadListDialog = true },
             )
-            DropdownMenuItem(
-                text = { Text(LocalStrings.current.ui.addToCollection, style = MaterialTheme.typography.labelLarge) },
-                leadingIcon = { Icon(Icons.Rounded.Add, null) },
-                onClick = { showAddToCollectionDialog = true },
-            )
         }
+
+        // Collections are local; read lists still are not. See SeriesActionsMenu.
+        DropdownMenuItem(
+            text = { Text(LocalStrings.current.ui.addToCollection, style = MaterialTheme.typography.labelLarge) },
+            leadingIcon = { Icon(Icons.Rounded.Add, null) },
+            onClick = { showAddToCollectionDialog = true },
+        )
 
         val isRead = remember { book.readProgress?.completed ?: false }
         val isUnread = remember { book.readProgress == null }

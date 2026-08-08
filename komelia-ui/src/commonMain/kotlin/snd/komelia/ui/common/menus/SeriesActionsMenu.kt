@@ -301,13 +301,16 @@ fun SeriesActionsMenu(
                     onDismissRequest()
                 }
             )
-
-            DropdownMenuItem(
-                text = { Text(LocalStrings.current.ui.addToCollection, style = MaterialTheme.typography.labelLarge) },
-                leadingIcon = { Icon(Icons.Rounded.Add, null) },
-                onClick = { showAddToCollectionDialog = true },
-            )
         }
+
+        // Outside the admin/online block on purpose. A collection is stored on
+        // the device, needs no server and no rights — and inside that block it
+        // was invisible in the only mode this app ever runs in.
+        DropdownMenuItem(
+            text = { Text(LocalStrings.current.ui.addToCollection, style = MaterialTheme.typography.labelLarge) },
+            leadingIcon = { Icon(Icons.Rounded.Add, null) },
+            onClick = { showAddToCollectionDialog = true },
+        )
 
         val isRead = remember { series.booksReadCount == series.booksCount }
         val isUnread = remember { series.booksUnreadCount == series.booksCount }

@@ -33,6 +33,7 @@ import snd.komelia.db.offline.ExposedMediaRepository
 import snd.komelia.db.offline.ExposedOfflineBookMetadataAggregationRepository
 import snd.komelia.db.offline.ExposedOfflineBookMetadataRepository
 import snd.komelia.db.offline.ExposedOfflineBookRepository
+import snd.komelia.db.offline.ExposedOfflineCollectionRepository
 import snd.komelia.db.offline.ExposedOfflineLibraryRepository
 import snd.komelia.db.offline.ExposedOfflineMediaServerRepository
 import snd.komelia.db.offline.ExposedOfflineReadProgressRepository
@@ -264,6 +265,9 @@ class DesktopAppModule(
             // Writable, unlike its neighbours here: this is the one referential
             // list the reader edits rather than only reads.
             retainedGenreRepository = ExposedRetainedGenreRepository(databases.offline),
+            // Writable for the same reason: a collection is the reader's, not
+            // the mirror's.
+            collectionRepository = ExposedOfflineCollectionRepository(databases.offline),
         )
     }
 

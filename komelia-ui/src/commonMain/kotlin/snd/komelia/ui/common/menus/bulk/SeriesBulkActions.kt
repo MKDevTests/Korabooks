@@ -194,14 +194,16 @@ data class SeriesBulkActionsState(
                     onClick = { showEditDialog = true }
                 )
             )
-            add(
-                BulkActionButtonData(
-                    description = "Add to collection",
-                    icon = Icons.AutoMirrored.Default.PlaylistAdd,
-                    onClick = { showAddToCollectionDialog = true }
-                )
-            )
         }
+
+        // Not gated: a collection lives on the device. See SeriesActionsMenu.
+        add(
+            BulkActionButtonData(
+                description = "Add to collection",
+                icon = Icons.AutoMirrored.Default.PlaylistAdd,
+                onClick = { showAddToCollectionDialog = true }
+            )
+        )
 
         if (!isOffline) {
             add(

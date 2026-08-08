@@ -3,6 +3,7 @@ package snd.komelia.offline.api
 import kotlinx.coroutines.flow.StateFlow
 import snd.komelia.komga.api.KomgaSeriesApi
 import snd.komelia.offline.action.OfflineActions
+import snd.komelia.offline.api.repository.OfflineCollectionRepository
 import snd.komelia.offline.api.repository.OfflineSeriesDtoRepository
 import snd.komelia.offline.book.repository.OfflineBookRepository
 import snd.komelia.offline.book.repository.OfflineThumbnailBookRepository
@@ -44,6 +45,7 @@ class OfflineSeriesApi(
     private val libraryRepository: OfflineLibraryRepository,
     private val bookRepository: OfflineBookRepository,
     private val thumbnailBookRepository: OfflineThumbnailBookRepository,
+    private val collectionRepository: OfflineCollectionRepository,
     private val offlineUserId: StateFlow<KomgaUserId>,
 
     /** See [OfflineBookApi]: a shelf borrows its cover from one of its books. */
@@ -219,7 +221,7 @@ class OfflineSeriesApi(
     }
 
     override suspend fun getAllCollectionsBySeries(seriesId: KomgaSeriesId): List<KomgaCollection> {
-        return emptyList()
+        return collectionRepository.findAllBySeriesId(seriesId)
     }
 
     private fun OfflineThumbnailSeries.toKomgaSeriesThumbnail() = KomgaSeriesThumbnail(

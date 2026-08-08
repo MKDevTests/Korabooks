@@ -42,6 +42,7 @@ import snd.komelia.db.offline.ExposedMediaRepository
 import snd.komelia.db.offline.ExposedOfflineBookMetadataAggregationRepository
 import snd.komelia.db.offline.ExposedOfflineBookMetadataRepository
 import snd.komelia.db.offline.ExposedOfflineBookRepository
+import snd.komelia.db.offline.ExposedOfflineCollectionRepository
 import snd.komelia.db.offline.ExposedOfflineLibraryRepository
 import snd.komelia.db.offline.ExposedOfflineMediaServerRepository
 import snd.komelia.db.offline.ExposedOfflineReadProgressRepository
@@ -306,6 +307,7 @@ class AndroidAppModule(
             bookDtoRepository = ExposedOfflineBookDtoRepository(databases.offline),
             referentialRepository = ExposedOfflineReferentialRepository(databases.offline),
             retainedGenreRepository = ExposedRetainedGenreRepository(databases.offline),
+            collectionRepository = ExposedOfflineCollectionRepository(databases.offline),
             seriesDtoRepository = ExposedSeriesDtoRepository(databases.offline),
             tasksRepository = ExposedOfflineTasksRepository(databases.offline),
             logJournalRepository = ExposedLogJournalRepository(databases.offline),

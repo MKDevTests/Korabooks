@@ -59,6 +59,14 @@ kotlin {
             implementation(libs.ktor.client.okhttp)
             implementation(projects.komeliaInfra.jni)
         }
+
+        // androidUnitTest and not jvmTest, for the reason spelled out in
+        // MigrationRegistrationTest: the JVM target of this module does not
+        // compile, and the Android chain is the one that ships.
+        androidUnitTest.dependencies {
+            implementation(libs.kotlin.test)
+            implementation(libs.kotlinx.coroutines.test)
+        }
     }
 }
 android {

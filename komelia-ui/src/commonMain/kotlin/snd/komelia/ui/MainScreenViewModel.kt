@@ -61,6 +61,17 @@ class MainScreenViewModel(
 ) : ScreenModel {
 
     val isOffline = offlineSettingsRepository.getOfflineMode().stateIn(screenModelScope, SharingStarted.Eagerly, false)
+
+    /**
+     * Whether every list is narrowed to the books whose file is on this device.
+     *
+     * Lives here rather than on one screen because that is what it does: the
+     * condition is applied in the SQL of the shared list queries, so it narrows
+     * the library, the home shelves and search alike. A control that looked local
+     * would have been a lie about its reach.
+     */
+    val downloadedOnly = offlineSettingsRepository.getDownloadedOnly()
+        .stateIn(screenModelScope, SharingStarted.Eagerly, false)
     val lastSelectedLibraryId = settingsRepository.getLastSelectedLibraryId()
         .stateIn(screenModelScope, SharingStarted.Eagerly, null)
 
@@ -188,6 +199,20 @@ class MainScreenViewModel(
 
     fun getLibraryActions(): LibraryMenuActions {
         return LibraryMenuActions(libraryApi, appNotifications, taskEmitter, screenModelScope)
+    }
+
+    /**
+     * Flips the filter, then asks the current screen to re-run its query.
+     *
+     * The reload is not optional: the condition lives inside the SQL, so nothing
+     * already drawn knows it changed. [screenReloadFlow] is the same signal
+     * pull-to-refresh uses, and every list screen already collects it.
+     */
+    fun toggleDownloadedOnly() {
+        screenModelScope.launch {
+            offlineSettingsRepository.putDownloadedOnly(!downloadedOnly.value)
+            screenReloadFlow.tryEmit(Unit)
+        }
     }
 
     fun onScreenReload() {

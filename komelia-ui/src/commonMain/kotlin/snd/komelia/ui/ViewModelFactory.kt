@@ -121,7 +121,6 @@ class ViewModelFactory(
             libraryFlow = getLibraryFlow(libraryId),
             libraryId = libraryId,
             settingsRepository = appRepositories.settingsRepository,
-            offlineSettingsRepository = dependencies.offlineDependencies.repositories.offlineSettingsRepository,
             taskEmitter = dependencies.offlineDependencies.taskEmitter,
             librarySeriesFiltersRepository = appRepositories.librarySeriesFiltersRepository,
             similarityIndexRepository = appRepositories.similarityIndexRepository,

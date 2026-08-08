@@ -151,7 +151,6 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.rounded.Casino
-import androidx.compose.material.icons.rounded.DownloadDone
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.IconButtonDefaults
 
@@ -330,8 +329,6 @@ class LibraryScreen(
                                     genresCount = vm.genresCount,
                                     showContinueReading = showContinueReading,
                                     onReadingClick = vm::toggleContinueReading,
-                                    downloadedOnly = vm.downloadedOnly.collectAsState().value,
-                                    onDownloadedOnlyClick = vm::toggleDownloadedOnly,
                                     onBrowseClick = vm::toBrowseTab,
                                     onBooksClick = vm::toBooksTab,
                                     onAuthorsClick = vm::toAuthorsTab,
@@ -1125,8 +1122,6 @@ private fun LibraryTabChips(
     genresCount: Int = 0,
     showContinueReading: Boolean,
     onReadingClick: () -> Unit,
-    downloadedOnly: Boolean = false,
-    onDownloadedOnlyClick: () -> Unit = {},
     onBrowseClick: () -> Unit,
     onBooksClick: () -> Unit = {},
     onAuthorsClick: () -> Unit = {},
@@ -1140,9 +1135,6 @@ private fun LibraryTabChips(
     contentPadding: PaddingValues = PaddingValues(0.dp),
 ) {
     val chipColors = AppFilterChipDefaults.filterChipColors()
-    // Read here: a LazyListScope is not a composition, so the CompositionLocal
-    // cannot be reached from inside the items below.
-    val isOffline = LocalOfflineMode.current.collectAsState().value
     LazyRow(
         modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
         contentPadding = contentPadding,
@@ -1254,24 +1246,6 @@ private fun LibraryTabChips(
             )
         }
 
-        // Beside the other chips because it is one: a filter on what the library
-        // shows, not a tab and not a setting. Offline-only, since with a server
-        // in reach every book opens and the distinction says nothing.
-        if (isOffline) {
-            item {
-                FilterChip(
-                    selected = downloadedOnly,
-                    onClick = onDownloadedOnlyClick,
-                    label = { Text(LocalStrings.current.ui.downloadedOnly) },
-                    leadingIcon = if (downloadedOnly) {
-                        { Icon(Icons.Rounded.DownloadDone, contentDescription = null, modifier = Modifier.size(18.dp)) }
-                    } else null,
-                    colors = chipColors,
-                    shape = AppFilterChipDefaults.shape(),
-                    border = AppFilterChipDefaults.filterChipBorder(downloadedOnly),
-                )
-            }
-        }
 
         if (currentTab == SERIES) {
             item {

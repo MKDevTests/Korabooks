@@ -979,7 +979,7 @@ val EnStrings = AppStrings(
         "stopAtEndOfBook" to "Stop at end of book (continuous reader)",
         "stopKomgaApplicationProcess" to "Stop Komga application process",
         "storageLocation" to "Storage location",
-        "downloadedOnly" to "Downloaded",
+        "downloadedOnly" to "Downloaded only",
         "streak" to "Streak",
         "successful" to "Successful",
         "suggestSameAuthorSimilarTitle" to "Suggest (same author / similar title)",

@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.DarkMode
+import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.DownloadDone
 import androidx.compose.material.icons.rounded.LightMode
 import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material.icons.rounded.MoreVert
@@ -108,16 +110,28 @@ fun NewTopAppBar(
                 modifier = Modifier.weight(1f),
             )
 
-            // The wi-fi toggle that used to sit here is gone. Korabooks has one
-            // mode — see CatalogueStartViewModel: offline mode is not a fallback
-            // here, it is the only mode — so the icon always read as offline, in
-            // error red, and tapping it offered to leave for a Komga login screen
-            // and a server that does not exist. It looked like "you are offline"
-            // and acted as "take me online", which is how it came to be pressed.
+            // Where the wi-fi toggle used to be. That one always read "offline" in
+            // error red — Korabooks has one mode, see CatalogueStartViewModel —
+            // and tapping it offered to leave for a Komga login screen and a
+            // server that does not exist: it looked like a state and acted as its
+            // opposite. `goOnline` stays on the view model and in the offline
+            // settings for anyone who means it.
             //
-            // `goOnline` stays on the view model: the upstream project has two
-            // modes, and the settings screen still exposes the switch for anyone
-            // who means it.
+            // The slot now holds the filter that belongs in a shared bar, because
+            // the flag narrows the library, the home shelves and search together.
+            // No confirmation dialog: unlike leaving offline mode, this is undone
+            // by tapping again.
+            if (isOffline) {
+                val downloadedOnly = mainScreenVm.downloadedOnly.collectAsState().value
+                IconButton(onClick = { mainScreenVm.toggleDownloadedOnly() }) {
+                    Icon(
+                        if (downloadedOnly) Icons.Rounded.DownloadDone else Icons.Rounded.Download,
+                        contentDescription = LocalStrings.current.ui.downloadedOnly,
+                        tint = if (downloadedOnly) iconColor
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
 
             val toggleIcon = when (theme) {
                 Theme.LIGHT, Theme.LIGHT_MODERN -> Icons.Rounded.DarkMode

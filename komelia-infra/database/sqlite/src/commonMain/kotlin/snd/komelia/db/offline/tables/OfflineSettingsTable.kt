@@ -5,6 +5,7 @@ import org.jetbrains.exposed.v1.core.Table
 object OfflineSettingsTable : Table("SETTINGS") {
     val version = integer("version")
     val isOfflineModeEnabled = bool("is_offline_mode_enabled")
+    val downloadedOnly = bool("downloaded_only").default(false)
     val userId = text("user_id").nullable()
     val serverId = text("server_id").nullable()
     val downloadDirectory = text("download_directory")

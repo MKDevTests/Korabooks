@@ -8,6 +8,7 @@ import org.jetbrains.exposed.v1.core.SortOrder
 import org.jetbrains.exposed.v1.core.Table
 import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.core.greater
 import org.jetbrains.exposed.v1.core.inList
 import org.jetbrains.exposed.v1.core.isNull
 import org.jetbrains.exposed.v1.core.or
@@ -189,6 +190,23 @@ class ExposedOfflineBookRepository(database: Database) : OfflineBookRepository, 
                 .selectAll()
                 .where { bookTable.seriesId.inList(seriesIds.map { it.value }) }
                 .map { it.toModel() }
+        }
+    }
+
+    override suspend fun findDownloadedSeriesIds(seriesIds: List<KomgaSeriesId>): Set<KomgaSeriesId> {
+        if (seriesIds.isEmpty()) return emptySet()
+        return transaction {
+            // Only the two columns, and distinct in SQL: a grid asks this for
+            // every page it draws, and reading twenty thousand full rows to keep
+            // one id from each was the whole cost of the answer.
+            bookTable
+                .select(bookTable.seriesId)
+                .where {
+                    bookTable.seriesId.inList(seriesIds.map { it.value })
+                        .and(bookTable.localFileModifiedDate.greater(0L))
+                }
+                .withDistinct()
+                .mapTo(mutableSetOf()) { KomgaSeriesId(it[bookTable.seriesId]) }
         }
     }
 

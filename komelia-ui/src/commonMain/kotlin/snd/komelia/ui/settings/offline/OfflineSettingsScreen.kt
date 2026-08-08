@@ -106,7 +106,9 @@ class OfflineSettingsScreen : Screen {
                         onDownloadCancel = downloadsState::onDownloadCancel,
                         scanState = downloadsState.scanState.collectAsState().value,
                         onScanClick = downloadsState::onScanClick,
-                        onScanDialogClose = downloadsState::onScanDialogClose
+                        onScanDialogClose = downloadsState::onScanDialogClose,
+                        downloadedOnly = downloadsState.downloadedOnly.collectAsState().value,
+                        onDownloadedOnlyChange = downloadsState::onDownloadedOnlyChange,
                     )
                 }
 

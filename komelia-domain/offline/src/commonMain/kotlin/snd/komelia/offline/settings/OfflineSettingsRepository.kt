@@ -8,6 +8,10 @@ import kotlin.time.Instant
 interface OfflineSettingsRepository {
     fun getOfflineMode(): Flow<Boolean>
     suspend fun putOfflineMode(offline: Boolean)
+
+    /** See `OfflineSettings.downloadedOnly`. */
+    fun getDownloadedOnly(): Flow<Boolean>
+    suspend fun putDownloadedOnly(downloadedOnly: Boolean)
     fun getUserId(): Flow<KomgaUserId>
     suspend fun putUserId(userId: KomgaUserId)
 

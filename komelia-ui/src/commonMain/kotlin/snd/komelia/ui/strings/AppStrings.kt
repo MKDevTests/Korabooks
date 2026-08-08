@@ -867,6 +867,8 @@ class UiStrings(private val values: Map<String, String>) {
     val stopAtEndOfBook: String get() = at("stopAtEndOfBook")
     val stopKomgaApplicationProcess: String get() = at("stopKomgaApplicationProcess")
     val storageLocation: String get() = at("storageLocation")
+    val downloadedOnly: String get() = at("downloadedOnly")
+    val downloadedOnlyDescription: String get() = at("downloadedOnlyDescription")
     val streak: String get() = at("streak")
     val successful: String get() = at("successful")
     val suggestSameAuthorSimilarTitle: String get() = at("suggestSameAuthorSimilarTitle")

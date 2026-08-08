@@ -26,6 +26,8 @@ import org.jetbrains.exposed.v1.jdbc.select
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import snd.komelia.db.ExposedRepository
 import snd.komelia.db.offline.conditions.BookSearchHelper
+import snd.komelia.db.offline.bookIsDownloaded
+import snd.komelia.db.offline.downloadedOnlyEnabled
 import snd.komelia.db.offline.conditions.RequiredJoin
 import snd.komelia.db.offline.offset
 import snd.komelia.db.offline.page
@@ -156,6 +158,9 @@ class ExposedOfflineBookDtoRepository(
     ): Page<KomeliaBook> {
 
         val librariesCondition = serverLibrariesCondition(userId)
+        // Read once for both queries below: the count and the page must agree,
+        // or the list says "20 books" over three of them.
+        val downloadedOnly = downloadedOnlyEnabled()
 
         val count = bookTable
             .join(
@@ -208,6 +213,7 @@ class ExposedOfflineBookDtoRepository(
                 if (userId != OfflineUser.ROOT) {
                     andWhere { bookTable.libraryId.inSubQuery(librariesCondition) }
                 }
+                if (downloadedOnly) andWhere { bookIsDownloaded() }
             }
             // No GROUP BY. Grouping by book id returned one row per book, each
             // holding COUNT(DISTINCT id) = 1, and taking the first of them made
@@ -229,6 +235,7 @@ class ExposedOfflineBookDtoRepository(
                 if (userId != OfflineUser.ROOT) {
                     andWhere { bookTable.libraryId.inSubQuery(librariesCondition) }
                 }
+                if (downloadedOnly) andWhere { bookIsDownloaded() }
             }.orderBy(*orderBy.toTypedArray())
             .apply { if (pageRequest.unpaged == false) limit(pageRequest.size ?: 20).offset(pageRequest.offset()) }
             .fetchAndMap()

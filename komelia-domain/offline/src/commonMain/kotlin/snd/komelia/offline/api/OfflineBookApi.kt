@@ -1,6 +1,9 @@
 package snd.komelia.offline.api
 
+import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.vinceglb.filekit.readBytes
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import snd.komelia.offline.localFilePath
 import snd.komelia.offline.readChunked
 import kotlinx.coroutines.flow.StateFlow
@@ -16,6 +19,7 @@ import snd.komelia.offline.book.actions.BookThumbnailDeleteAction
 import snd.komelia.offline.book.actions.BookThumbnailSelectAction
 import snd.komelia.offline.book.actions.BookThumbnailUploadAction
 import snd.komelia.offline.book.model.OfflineBook
+import snd.komelia.offline.sync.CatalogueBookDownloader
 import snd.komelia.offline.sync.CatalogueFileDownloader
 import snd.komelia.offline.book.model.OfflineThumbnailBook
 import snd.komelia.offline.book.repository.OfflineBookRepository
@@ -51,6 +55,8 @@ import snd.komga.client.readlist.KomgaReadList
 import snd.komga.client.search.BookConditionBuilder
 import snd.komga.client.user.KomgaUserId
 
+private val logger = KotlinLogging.logger { }
+
 class OfflineBookApi(
     private val mediaRepository: OfflineMediaRepository,
     private val komeliaBookRepository: OfflineBookDtoRepository,
@@ -78,10 +84,19 @@ class OfflineBookApi(
      *
      * Opening one used to fail with a file-not-found on an empty path, which is
      * what a reader gets when it is handed a row describing a file nobody
-     * fetched. Streaming straight from the catalogue means a book opens on the
-     * first tap; downloading it explicitly is still what makes it stay.
+     * fetched. Only the fallback now, for when [catalogueBookKeeper] is absent.
      */
     private val catalogueDownloader: CatalogueFileDownloader? = null,
+
+    /**
+     * Keeps the file instead of streaming it past.
+     *
+     * Opening a book downloads it. Streaming meant that having a look cost the
+     * same bytes as keeping it and left nothing behind, so the next look paid
+     * again — and a book already read once was still unreadable with no
+     * connection. Whatever gets opened is on disk afterwards.
+     */
+    private val catalogueBookKeeper: CatalogueBookDownloader? = null,
 ) : KomgaBookApi {
 
     /**
@@ -359,7 +374,7 @@ class OfflineBookApi(
     }
 
     override suspend fun getBookRawFile(bookId: KomgaBookId): ByteArray {
-        val book = bookRepository.get(bookId)
+        val book = keepLocally(bookId)
         if (book.hasLocalCopy) return book.fileDownloadPath.readBytes()
 
         val downloader = catalogueDownloader ?: return book.fileDownloadPath.readBytes()
@@ -373,7 +388,7 @@ class OfflineBookApi(
     }
 
     override suspend fun downloadBookRawFile(bookId: KomgaBookId, onChunk: suspend (ByteArray) -> Unit) {
-        val book = bookRepository.get(bookId)
+        val book = keepLocally(bookId)
         if (!book.hasLocalCopy && catalogueDownloader != null) {
             catalogueDownloader.stream(book.url, onChunk)
             return
@@ -381,8 +396,38 @@ class OfflineBookApi(
         book.fileDownloadPath.readChunked(64 * 1024, onChunk)
     }
 
+    /**
+     * Downloads the book unless it is already on disk, and returns the row as it
+     * stands afterwards.
+     *
+     * Both readers come through here, so a book that gets opened gets kept. A
+     * failure is not fatal: it falls back to the row as it was, and the callers
+     * above then stream it — a download that could not finish should not stop
+     * someone reading.
+     */
+    private suspend fun keepLocally(bookId: KomgaBookId): OfflineBook {
+        val book = bookRepository.get(bookId)
+        val keeper = catalogueBookKeeper
+        if (book.hasLocalCopy || keeper == null || !keeper.handles(book)) return book
+
+        return try {
+            keeper.download(bookId)
+            bookRepository.get(bookId)
+        } catch (e: Exception) {
+            currentCoroutineContext().ensureActive()
+            logger.warn(e) { "could not keep ${book.name}, reading it without saving" }
+            book
+        }
+    }
+
+    /**
+     * Used to return every id it was given, which made the whole library wear
+     * the "downloaded" badge — true of a Komga library fetched for offline use,
+     * where a row only exists because somebody downloaded it, and false of a
+     * mirrored catalogue, where a row exists for every book on the server.
+     */
     override suspend fun getDownloadedSeriesIds(seriesIds: List<KomgaSeriesId>): Set<KomgaSeriesId> {
-        return seriesIds.toSet()
+        return bookRepository.findDownloadedSeriesIds(seriesIds)
     }
 
     override suspend fun getBookLocalFilePath(bookId: KomgaBookId): String? {

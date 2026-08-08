@@ -10,6 +10,15 @@ import kotlin.time.Instant
 @Serializable
 data class OfflineSettings(
     val isOfflineModeEnabled: Boolean = false,
+
+    /**
+     * Narrows every list to the books whose file is on disk.
+     *
+     * A catalogue mirror holds a row per book on the server, so the library
+     * looks the same with or without a connection. This is the switch that makes
+     * it show what can actually be opened.
+     */
+    val downloadedOnly: Boolean = false,
     val downloadDirectory: PlatformFile,
     val userId: KomgaUserId = OfflineUser.ROOT,
     val serverId: OfflineMediaServerId? = null,

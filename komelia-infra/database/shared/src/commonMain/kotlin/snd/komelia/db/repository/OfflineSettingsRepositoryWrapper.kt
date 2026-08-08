@@ -20,6 +20,14 @@ class OfflineSettingsRepositoryWrapper(
         wrapper.transform { it.copy(isOfflineModeEnabled = offline) }
     }
 
+    override fun getDownloadedOnly(): Flow<Boolean> {
+        return wrapper.mapState { it.downloadedOnly }
+    }
+
+    override suspend fun putDownloadedOnly(downloadedOnly: Boolean) {
+        wrapper.transform { it.copy(downloadedOnly = downloadedOnly) }
+    }
+
     override fun getUserId(): Flow<KomgaUserId> {
         return wrapper.mapState { it.userId }
     }

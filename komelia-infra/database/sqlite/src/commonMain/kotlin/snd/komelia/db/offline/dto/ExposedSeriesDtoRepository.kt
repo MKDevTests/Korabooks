@@ -19,6 +19,8 @@ import org.jetbrains.exposed.v1.jdbc.andWhere
 import org.jetbrains.exposed.v1.jdbc.select
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import snd.komelia.db.ExposedRepository
+import snd.komelia.db.offline.downloadedOnlyEnabled
+import snd.komelia.db.offline.seriesHasDownloadedBook
 import snd.komelia.db.offline.conditions.RequiredJoin
 import snd.komelia.db.offline.conditions.SeriesSearchHelper
 import snd.komelia.db.offline.offset
@@ -167,6 +169,9 @@ class ExposedSeriesDtoRepository(
         pageRequest: KomgaPageRequest,
     ): Page<KomgaSeries> {
         return run {
+            // Read once for both queries below: the count and the page must
+            // agree, or the grid says "20 series" over three covers.
+            val downloadedOnly = downloadedOnlyEnabled()
 
             val count = seriesTable
                 .join(
@@ -210,6 +215,7 @@ class ExposedSeriesDtoRepository(
                     if (searchTerm != null) andWhere {
                         OfflineSeriesMetadataTable.title.like("%${searchTerm}%")
                     }
+                    if (downloadedOnly) andWhere { seriesHasDownloadedBook(seriesTable.id) }
                 }
                 .firstOrNull()
                 ?.let { it[seriesTable.id.countDistinct()] } ?: 0
@@ -224,6 +230,7 @@ class ExposedSeriesDtoRepository(
                     if (searchTerm != null) andWhere {
                         OfflineSeriesMetadataTable.title.like("%${searchTerm}%")
                     }
+                    if (downloadedOnly) andWhere { seriesHasDownloadedBook(seriesTable.id) }
                 }
                 .orderBy(*orderBy.toTypedArray())
                 .apply { if (pageRequest.unpaged == false) limit(pageRequest.size ?: 20).offset(pageRequest.offset()) }

@@ -23,6 +23,16 @@ interface OfflineBookRepository {
     ): KomgaBookId?
 
     suspend fun findAllBySeriesIds(seriesIds: List<KomgaSeriesId>): List<OfflineBook>
+
+    /**
+     * Of [seriesIds], the ones holding at least one book whose file is on disk.
+     *
+     * Distinct from "has a row": a mirrored catalogue has a row per book whether
+     * or not anything was ever fetched, so presence in the table says nothing.
+     * Only the local modification date does.
+     */
+    suspend fun findDownloadedSeriesIds(seriesIds: List<KomgaSeriesId>): Set<KomgaSeriesId>
+
     suspend fun findAllIdsBySeriesId(seriesId: KomgaSeriesId): List<KomgaBookId>
     suspend fun findAllIdsByLibraryId(libraryId: KomgaLibraryId): List<KomgaBookId>
     suspend fun get(id: KomgaBookId): OfflineBook

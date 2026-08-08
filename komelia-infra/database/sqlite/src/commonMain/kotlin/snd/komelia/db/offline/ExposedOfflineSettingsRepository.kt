@@ -28,6 +28,7 @@ class ExposedOfflineSettingsRepository(database: Database) : ExposedRepository(d
             OfflineSettingsTable.upsert {
                 it[version] = 1
                 it[OfflineSettingsTable.isOfflineModeEnabled] = settings.isOfflineModeEnabled
+                it[OfflineSettingsTable.downloadedOnly] = settings.downloadedOnly
                 it[OfflineSettingsTable.userId] = settings.userId.value
                 it[OfflineSettingsTable.serverId] = settings.serverId?.value
                 it[OfflineSettingsTable.downloadDirectory] = settings.downloadDirectory.toString()
@@ -40,6 +41,7 @@ class ExposedOfflineSettingsRepository(database: Database) : ExposedRepository(d
     private fun ResultRow.toOfflineSettings(): OfflineSettings {
         return OfflineSettings(
             isOfflineModeEnabled = this[OfflineSettingsTable.isOfflineModeEnabled],
+            downloadedOnly = this[OfflineSettingsTable.downloadedOnly],
             userId = this[OfflineSettingsTable.userId]?.let { KomgaUserId(it) } ?: OfflineUser.ROOT,
             serverId = this[OfflineSettingsTable.serverId]?.let { OfflineMediaServerId(it) },
             downloadDirectory = PlatformFile(this[OfflineSettingsTable.downloadDirectory]),

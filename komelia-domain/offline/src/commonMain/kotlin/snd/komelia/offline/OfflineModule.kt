@@ -237,6 +237,22 @@ abstract class OfflineModule(
             coverLoader = coverLoader,
         )
 
+        // One keeper, two callers: the task queue downloads on request, and the
+        // book api downloads on open. It used to be built inline for the task
+        // handler alone, so opening a book could only stream it — and the file
+        // was fetched again on every open, never kept.
+        val catalogueBookDownloader = catalogueDownloader?.let {
+            snd.komelia.offline.sync.CatalogueBookDownloader(
+                libraryDownloadPath = repositories.offlineSettingsRepository.getDownloadDirectory(),
+                bookRepository = repositories.bookRepository,
+                seriesRepository = repositories.seriesRepository,
+                libraryRepository = repositories.libraryRepository,
+                mediaRepository = repositories.mediaRepository,
+                downloader = it,
+                komgaEvents = komgaEvents,
+            )
+        }
+
         val komgaApi = OfflineKomgaApi(
             actuatorApi = OfflineActuatorApi(),
             announcementsApi = OfflineAnnouncementsApi(),
@@ -251,6 +267,7 @@ abstract class OfflineModule(
                 offlineUserId = offlineUserId,
                 coverLoader = coverLoader,
                 catalogueDownloader = catalogueDownloader,
+                catalogueBookKeeper = catalogueBookDownloader,
             ),
             collectionsApi = OfflineCollectionsApi(
                 collectionRepository = repositories.collectionRepository,
@@ -286,17 +303,7 @@ abstract class OfflineModule(
             taskEmitter = taskEmitter,
             downloadManager = downloadManager,
             komgaBookClient = komgaClientFactory.bookClient(),
-            catalogueDownloader = catalogueDownloader?.let {
-                snd.komelia.offline.sync.CatalogueBookDownloader(
-                    libraryDownloadPath = repositories.offlineSettingsRepository.getDownloadDirectory(),
-                    bookRepository = repositories.bookRepository,
-                    seriesRepository = repositories.seriesRepository,
-                    libraryRepository = repositories.libraryRepository,
-                    mediaRepository = repositories.mediaRepository,
-                    downloader = it,
-                    komgaEvents = komgaEvents,
-                )
-            },
+            catalogueDownloader = catalogueBookDownloader,
         )
         val taskProcessor = TaskProcessor(
             tasksRepository = repositories.tasksRepository,

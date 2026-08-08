@@ -991,6 +991,8 @@ val FrStrings = AppStrings(
         "stopAtEndOfBook" to "S'arrêter à la fin du tome (lecture continue)",
         "stopKomgaApplicationProcess" to "Arrêter le processus Komga",
         "storageLocation" to "Emplacement de stockage",
+        "downloadedOnly" to "Téléchargés uniquement",
+        "downloadedOnlyDescription" to "Masquer tout ce dont le fichier n'est pas sur cet appareil.",
         "streak" to "Série en cours",
         "successful" to "Réussi",
         "suggestSameAuthorSimilarTitle" to "Suggérer (même auteur / titre proche)",

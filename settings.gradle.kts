@@ -2,6 +2,35 @@ rootProject.name = "Korabooks"
 enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")
 
 pluginManagement {
+    /**
+     * A newer R8 than the AGP ships with, because this project is ahead of it
+     * on Kotlin.
+     *
+     * R8 is bundled inside the AGP, and 8.13.2 bundles R8 8.13.x. That R8 was
+     * built before Kotlin 2.4 and cannot read its `@Metadata`, so a release
+     * build printed **7 262** copies of "An error occurred when parsing kotlin
+     * metadata" — measured, one per class it gave up on. Google's table
+     * (developer.android.com/studio/build/kotlin-d8-r8-versions) puts Kotlin 2.4
+     * at R8 9.1.29 with AGP 8.5.2 or newer: the AGP here is new enough, only its
+     * bundled R8 is not.
+     *
+     * The consequence was not only noise. Metadata R8 cannot parse is metadata
+     * it cannot rewrite, so anything reading it at runtime through reflection
+     * sees names that no longer match the shrunk classes.
+     *
+     * Keep this in step with `kotlin` in gradle/libs.versions.toml: a Kotlin
+     * bump needs the matching R8 from that table, or the warnings come back.
+     */
+    buildscript {
+        repositories {
+            mavenCentral()
+            maven { url = uri("https://storage.googleapis.com/r8-releases/raw") }
+        }
+        dependencies {
+            classpath("com.android.tools:r8:9.1.29")
+        }
+    }
+
     repositories {
         google()
         gradlePluginPortal()

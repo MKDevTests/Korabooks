@@ -26,6 +26,7 @@ import snd.komelia.ui.LoadState
 import snd.komga.client.book.KomgaBookSearch
 import snd.komga.client.common.KomgaPageRequest
 import snd.komga.client.common.KomgaSort
+import snd.komga.client.common.Page
 import snd.komga.client.library.KomgaLibrary
 import snd.komga.client.library.KomgaLibraryId
 import snd.komga.client.search.KomgaSearchCondition
@@ -185,34 +186,59 @@ class SearchViewModel(
     private suspend fun loadSeriesPage(pageNumber: Int) {
         appNotifications.runCatchingToNotifications {
             val libId = selectedLibraryId
-            val fuzzy = query.toFuzzyQuery()
-            val search = if (libId != null) {
+            fun search(term: String) = if (libId != null) {
                 KomgaSeriesSearch(
                     condition = allOfSeries {
                         library { isEqualTo(libId) }
                         tag { isNotEqualTo(HIDDEN_TAG) }
                     }.toSeriesCondition(),
-                    fullTextSearch = fuzzy,
+                    fullTextSearch = term,
                 )
             } else {
                 KomgaSeriesSearch(
                     condition = allOfSeries { tag { isNotEqualTo(HIDDEN_TAG) } }.toSeriesCondition(),
-                    fullTextSearch = fuzzy,
+                    fullTextSearch = term,
                 )
             }
-            val page = seriesApi.getSeriesList(
-                search,
-                KomgaPageRequest(
-                    pageIndex = pageNumber - 1,
-                    size = 10,
-                    sort = if (query.isBlank()) KomgaSort.KomgaSeriesSort.byLastModifiedDateDesc() else KomgaSort.Unsorted
-                )
+
+            val request = KomgaPageRequest(
+                pageIndex = pageNumber - 1,
+                size = 10,
+                sort = if (query.isBlank()) KomgaSort.KomgaSeriesSort.byLastModifiedDateDesc() else KomgaSort.Unsorted
             )
+            val page = searchingTwice(request) { term -> seriesApi.getSeriesList(search(term), request) }
 
             seriesCurrentPage = page.number + 1
             seriesTotalPages = page.totalPages
             seriesResults = page.content
         }.onFailure { mutableState.value = LoadState.Error(it) }
+    }
+
+    /**
+     * The query as typed first, its fuzzy form only if that found nothing.
+     *
+     * Fuzziness is Lucene syntax — "skyward" becomes "skyward~1" — and Lucene is
+     * Komga's, evaluated server-side. Against a mirrored OPDS catalogue there is
+     * no Komga: the term reaches SQLite and becomes `title LIKE '%skyward~1%'`,
+     * which matches nothing. Searching a real series by its exact name returned
+     * no results at all, while the same search for a shorter word worked —
+     * [toFuzzyQuery] leaves terms under four characters alone, so "sky" found
+     * what "skyward" could not.
+     *
+     * Asking twice fixes it without the screen having to know which backend it
+     * is talking to, and it is the right order regardless: what the reader typed
+     * deserves to be tried before what we guessed they meant. A second request
+     * only happens when the first came back empty.
+     */
+    private suspend fun <T> searchingTwice(
+        request: KomgaPageRequest,
+        fetch: suspend (String) -> Page<T>,
+    ): Page<T> {
+        val exact = fetch(query.trim())
+        if (exact.content.isNotEmpty() || query.isBlank()) return exact
+        val fuzzy = query.toFuzzyQuery()
+        if (fuzzy == query.trim()) return exact
+        return fetch(fuzzy)
     }
 
     fun onBookPageChange(pageNumber: Int) {
@@ -226,23 +252,21 @@ class SearchViewModel(
     private suspend fun loadBooksPage(pageNumber: Int) {
         appNotifications.runCatchingToNotifications {
             val libId = selectedLibraryId
-            val fuzzy = query.toFuzzyQuery()
-            val search = if (libId != null) {
+            fun search(term: String) = if (libId != null) {
                 KomgaBookSearch(
                     condition = allOfBooks { library { isEqualTo(libId) } }.toBookCondition(),
-                    fullTextSearch = fuzzy,
+                    fullTextSearch = term,
                 )
             } else {
-                KomgaBookSearch(fullTextSearch = fuzzy)
+                KomgaBookSearch(fullTextSearch = term)
             }
-            val page = bookApi.getBookList(
-                search,
-                KomgaPageRequest(
-                    pageIndex = pageNumber - 1,
-                    size = 10,
-                    sort = if (query.isBlank()) KomgaSort.KomgaBooksSort.byLastModifiedDateDesc() else KomgaSort.Unsorted
-                )
+
+            val request = KomgaPageRequest(
+                pageIndex = pageNumber - 1,
+                size = 10,
+                sort = if (query.isBlank()) KomgaSort.KomgaBooksSort.byLastModifiedDateDesc() else KomgaSort.Unsorted
             )
+            val page = searchingTwice(request) { term -> bookApi.getBookList(search(term), request) }
 
             bookCurrentPage = page.number + 1
             bookTotalPages = page.totalPages

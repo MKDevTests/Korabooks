@@ -92,6 +92,7 @@ class LibraryViewModel(
     libraryFlow: Flow<KomgaLibrary?>,
     private val libraryId: KomgaLibraryId?,
     private val settingsRepository: CommonSettingsRepository,
+    private val offlineSettingsRepository: snd.komelia.offline.settings.OfflineSettingsRepository,
     private val librarySeriesFiltersRepository: snd.komelia.libraryfilters.LibrarySeriesFiltersRepository,
     private val similarityIndexRepository: snd.komelia.similarity.SimilarityIndexRepository,
     private val libraryCountsRepository: snd.komelia.library.LibraryCountsRepository,
@@ -107,6 +108,17 @@ class LibraryViewModel(
         .stateIn(screenModelScope, SharingStarted.Eagerly, defaultCardWidth.dp)
     val showContinueReading = settingsRepository.getShowContinueReading()
         .stateIn(screenModelScope, SharingStarted.Eagerly, true)
+
+    /**
+     * Whether the library is narrowed to the books whose file is on this device.
+     *
+     * A view of the library, so the control lives on the library — it started out
+     * as a switch in the offline settings, next to the download folder, which is
+     * where nobody looks for a filter. The value itself stays in the offline
+     * settings because the SQL layer reads it there.
+     */
+    val downloadedOnly = offlineSettingsRepository.getDownloadedOnly()
+        .stateIn(screenModelScope, SharingStarted.Eagerly, false)
 
     var currentTab by mutableStateOf(BOOKS)
     var collectionsCount by mutableStateOf(0)
@@ -408,6 +420,19 @@ class LibraryViewModel(
      */
     fun refreshKeepReading() {
         screenModelScope.launch { loadKeepReadingBooks() }
+    }
+
+    /**
+     * Flips the filter and re-runs the current tab's query.
+     *
+     * The reload is not optional: the condition is applied inside the SQL, so
+     * nothing already on screen knows it changed.
+     */
+    fun toggleDownloadedOnly() {
+        screenModelScope.launch {
+            offlineSettingsRepository.putDownloadedOnly(!downloadedOnly.value)
+            reload()
+        }
     }
 
     fun toggleContinueReading() {

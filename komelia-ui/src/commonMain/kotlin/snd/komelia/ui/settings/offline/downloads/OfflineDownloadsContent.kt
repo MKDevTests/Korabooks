@@ -37,8 +37,6 @@ fun OfflineDownloadsContent(
     scanState: OfflineScanState,
     onScanClick: () -> Unit,
     onScanDialogClose: () -> Unit,
-    downloadedOnly: Boolean,
-    onDownloadedOnlyChange: (Boolean) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         if (storageLocation != null) {
@@ -66,27 +64,6 @@ fun OfflineDownloadsContent(
         }
 
         Button(onClick = onScanClick) { Text(LocalStrings.current.ui.scanForExistingFiles) }
-
-        HorizontalDivider()
-
-        // The switch sits here rather than in a filter menu because it is not a
-        // filter on one list: it narrows every list at once, which is closer to
-        // a view of the library than to a search.
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text(LocalStrings.current.ui.downloadedOnly)
-                Text(
-                    LocalStrings.current.ui.downloadedOnlyDescription,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Switch(checked = downloadedOnly, onCheckedChange = onDownloadedOnlyChange)
-        }
 
         HorizontalDivider()
         for (event in downloads) {

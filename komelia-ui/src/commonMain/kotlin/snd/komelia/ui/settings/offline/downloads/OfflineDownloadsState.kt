@@ -42,15 +42,6 @@ class OfflineDownloadsState(
     val storageLocation = settingsRepository.getDownloadDirectory()
         .stateIn(coroutineScope, SharingStarted.Eagerly, null)
 
-    /**
-     * Whether the library shows only what is on disk.
-     *
-     * Lives beside the downloads because that is the question it answers: this
-     * screen is where someone looks to find out what they have, and a mirrored
-     * catalogue otherwise looks identical whether or not anything was fetched.
-     */
-    val downloadedOnly = settingsRepository.getDownloadedOnly()
-        .stateIn(coroutineScope, SharingStarted.Eagerly, false)
 
     val scanState = MutableStateFlow<OfflineScanState>(OfflineScanState.Idle)
 
@@ -73,10 +64,6 @@ class OfflineDownloadsState(
         } else {
             updateDownloads(event)
         }
-    }
-
-    fun onDownloadedOnlyChange(enabled: Boolean) {
-        coroutineScope.launch { settingsRepository.putDownloadedOnly(enabled) }
     }
 
     fun onStorageLocationChange(directory: PlatformFile) {

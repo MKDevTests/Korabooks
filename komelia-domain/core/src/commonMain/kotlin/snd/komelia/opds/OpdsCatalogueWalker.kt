@@ -118,16 +118,22 @@ class OpdsCatalogueWalker(
      *
      * The fast half, and the one worth waiting for: an alphabetical index costs
      * one request per page of sixty, so a twenty thousand book library is a few
-     * hundred requests rather than a few thousand. Nothing here is grouped —
-     * that is [walkSeries]' business, and it can happen later.
+     * hundred requests rather than a few thousand.
+     *
+     * Grouped here too, when the catalogue lets us — a book that names its own
+     * series is put straight onto that series' shelf. Returns how many did, which
+     * is what tells the caller whether [walkSeries] has anything left to learn:
+     * on a catalogue that names series, it has nothing, and that is thousands of
+     * requests not made.
      */
     suspend fun walkBooks(
         rootUrl: String,
         onProgress: (OpdsWalkProgress) -> Unit = {},
         onShelf: suspend (OpdsShelf) -> Unit,
-    ) {
+    ): Int {
         val root = fetch(rootUrl)
         var shelfCount = 0
+        var grouped = 0
         val seen = mutableSetOf<String>()
         val report = reporter(onProgress) { shelfCount to seen.size }
 
@@ -165,7 +171,21 @@ class OpdsCatalogueWalker(
                             for (book in found) {
                                 if (!seen.add(book.id)) continue
                                 shelfCount++
-                                onShelf(OpdsShelf(book.title, listOf(book), standalone = true))
+                                // A book that names its own series goes straight
+                                // onto that shelf. One book per shelf still —
+                                // shelves are emitted as pages arrive and the
+                                // volumes of one series are scattered across the
+                                // alphabet — but the shelf's *identity* is the
+                                // series name, so they all land on the same row.
+                                // This is what makes the grouping pass optional:
+                                // see [OpdsEntry.seriesName].
+                                val series = book.seriesName
+                                if (series != null) {
+                                    grouped++
+                                    onShelf(OpdsShelf(series, listOf(book), standalone = false))
+                                } else {
+                                    onShelf(OpdsShelf(book.title, listOf(book), standalone = true))
+                                }
                             }
                             onProgress(OpdsWalkProgress(shelfCount, seen.size, branch.title))
                         }
@@ -173,7 +193,10 @@ class OpdsCatalogueWalker(
                 }
             }.awaitAll()
         }
-        logger.info { "OPDS books walk done: ${seen.size} books" }
+        // Said out loud because it decides whether the next pass runs at all, and
+        // whether a catalogue names its series is a property of the server.
+        logger.info { "OPDS books walk done: ${seen.size} books, $grouped named a series" }
+        return grouped
     }
 
     /**

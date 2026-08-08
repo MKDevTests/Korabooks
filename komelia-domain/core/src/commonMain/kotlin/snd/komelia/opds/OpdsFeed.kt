@@ -35,6 +35,23 @@ data class OpdsEntry(
     val title: String,
     val authors: List<OpdsAuthor> = emptyList(),
     val summary: String? = null,
+    /**
+     * The series this book belongs to, when the catalogue says so at all.
+     *
+     * OPDS has no series field — the standard predates the idea — so the only
+     * general way to learn membership is to open every series shelf, one request
+     * each. Calibre-Web, however, writes it into the book's own description:
+     *
+     *     SERIES: Skyward [2.50]
+     *
+     * Which changes the arithmetic of a whole sync. Reading it here means the
+     * grouping pass — 1729 requests against a server that answers one at a time,
+     * measured at forty minutes — is not needed at all on such a catalogue. The
+     * pass stays for servers that say nothing, and this is null for them.
+     */
+    val seriesName: String? = null,
+    /** The volume's place in [seriesName]. Fractional on purpose: Calibre uses 2.5 for a novella. */
+    val seriesIndex: Double? = null,
     /** Calibre tags. Free text, one per `<category>`. */
     val categories: List<String> = emptyList(),
     val language: String? = null,

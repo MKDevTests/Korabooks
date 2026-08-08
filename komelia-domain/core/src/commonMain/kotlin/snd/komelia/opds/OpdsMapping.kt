@@ -149,7 +149,14 @@ class OpdsMapper(
         // cover the reader can never turn into a page.
         val file = preferredAcquisition(entry) ?: return null
         val timestamp = entry.updated?.let { parseInstant(it) } ?: now()
-        val number = index + 1
+
+        // The catalogue's own volume number when it publishes one, and only then
+        // the position in the shelf. Position was all a series shelf ever gave
+        // us; a book that names "SERIES: Skyward [2.50]" arrives on its own,
+        // scattered across the alphabetical index, and would otherwise be volume
+        // one of its series along with every other volume of it.
+        val declared = entry.seriesIndex
+        val number = declared ?: (index + 1).toDouble()
 
         return KomeliaBook(
             id = bookId(entry),
@@ -160,7 +167,7 @@ class OpdsMapper(
             // The acquisition URL, kept so the downloader knows where to go
             // without walking the catalogue a second time.
             url = file.href,
-            number = number,
+            number = number.toInt(),
             created = timestamp,
             lastModified = timestamp,
             fileLastModified = timestamp,
@@ -170,7 +177,10 @@ class OpdsMapper(
             metadata = KomgaBookMetadata(
                 title = entry.title,
                 summary = entry.summary.orEmpty(),
-                number = number.toString(),
+                // "2.5" for a novella, "3" for a volume: a trailing .0 on every
+                // book in the library would read as a bug.
+                number = if (number == number.toInt().toDouble()) number.toInt().toString()
+                else number.toString(),
                 numberSort = number.toFloat(),
                 releaseDate = entry.published?.let { parseDate(it) },
                 // OPDS says who wrote a book, never in what capacity. Calling

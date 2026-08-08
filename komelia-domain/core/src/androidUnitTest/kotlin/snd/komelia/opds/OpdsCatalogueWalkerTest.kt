@@ -395,6 +395,57 @@ class OpdsCatalogueWalkerTest {
         )
     }
 
+    /**
+     * The books pass groups on its own when the catalogue says who belongs where.
+     *
+     * This is the whole of the sync's cost, moved: the grouping pass is one
+     * request per series and 1729 of them against a server that answers one at a
+     * time. A book that carries "SERIES: Skyward [2]" makes every one of those
+     * requests unnecessary, and the count returned here is what tells the sync so.
+     */
+    @Test
+    fun putsBooksOnTheirNamedSeriesShelf() = runTest {
+        fun bookInSeries(id: String, title: String, series: String, index: Double) =
+            book(id, title).copy(seriesName = series, seriesIndex = index)
+
+        val catalogue = mapOf(
+            "/opds" to feed(listOf(nav("Livres alphabétiques", "/opds/books"))),
+            "/opds/books" to feed(listOf(nav("Tout", "/opds/books/letter/00"))),
+            "/opds/books/letter/00" to feed(
+                listOf(
+                    bookInSeries("b1", "Vers les étoiles", "Skyward", 1.0),
+                    book("b2", "Les carnets du diable"),
+                    bookInSeries("b3", "Astrevise", "Skyward", 2.0),
+                )
+            ),
+        )
+        val shelves = mutableListOf<OpdsShelf>()
+
+        val named = walkerOver(catalogue).walkBooks("/opds") { shelves += it }
+
+        assertEquals(2, named, "two books named a series")
+        // Volumes of one series arrive apart — the index is alphabetical — but
+        // both shelves carry the series title, which is what gives them the same
+        // identity once mapped.
+        assertEquals(listOf("Skyward", "Les carnets du diable", "Skyward"), shelves.map { it.title })
+        assertEquals(listOf(false, true, false), shelves.map { it.standalone })
+    }
+
+    /** A catalogue that says nothing still yields a flat library, as before. */
+    @Test
+    fun keepsOneShelfPerBookWhenNoSeriesIsNamed() = runTest {
+        val named = books(duneCatalogue).let { shelves ->
+            assertTrue(shelves.all { it.standalone })
+            0
+        }
+        assertEquals(0, named)
+
+        // And the count the walk itself reports is zero, which is the signal the
+        // grouping pass is still needed.
+        val reported = walkerOver(duneCatalogue).walkBooks("/opds") { }
+        assertEquals(0, reported)
+    }
+
     /** Without a count there is nothing to compute from, so we ask page by page. */
     @Test
     fun stillFollowsNextLinksWhenTheFeedIsNotCounted() = runTest {

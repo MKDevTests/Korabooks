@@ -16,6 +16,103 @@ class OpdsFeedParserTest {
     private val parser = OpdsFeedParser()
     private val root = "https://books.example/opds"
 
+    /**
+     * Copied down to the whitespace from what a real Calibre-Web returns on
+     * /opds/new, because the thing being read is a *convention* rather than a
+     * field: the series lives in a text line inside an xhtml `content`, beside
+     * the tags, the genre block and the publisher's blurb. Anything invented
+     * here would test the invention.
+     */
+    private val calibreWebNewFeed = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <feed xmlns="http://www.w3.org/2005/Atom" xmlns:dcterms="http://purl.org/dc/terms/">
+          <title>Calibre-Web</title>
+          <entry>
+            <title>Missions stellaires</title>
+            <id>urn:uuid:d71fc66c-65c4-4773-bbd3-f5c917300476</id>
+            <updated>2026-06-23T18:25:13+00:00</updated>
+            <author><name>Brandon Sanderson</name></author>
+            <published>2023-09-20T05:35:21+00:00</published>
+            <dcterms:language>fra</dcterms:language>
+            <category scheme="http://www.bisg.org/standards/bisac_subject/index.html"
+                      term="SF" label="SF"/>
+            <category scheme="http://www.bisg.org/standards/bisac_subject/index.html"
+                      term="SF.Space_Opera" label="SF.Space_Opera"/>
+            <content type="xhtml"><div xmlns="http://www.w3.org/1999/xhtml">
+            TAGS: Jeunesse, SF, SF.Space_Opera<br/>
+            SERIES: Skyward [2.50]<br/>
+                            Genre:
+                                        SF,
+                                        SF.Space_Opera
+                            <br/>
+                <p>Alors que Spensa est coincée dans le nulle part.</p>
+            </div></content>
+            <link rel="http://opds-spec.org/acquisition" href="/opds/download/40810/epub/"
+                  length="1196725" title="EPUB" type="application/epub+zip"/>
+          </entry>
+          <entry>
+            <title>Les carnets du diable</title>
+            <id>urn:uuid:9feb36fe-decd-45d3-807c-523150bbcf9e</id>
+            <author><name>Anton LaVey</name></author>
+            <content type="xhtml"><div xmlns="http://www.w3.org/1999/xhtml">
+                <p>Les Carnets du Diable rassemblent la sagesse du fondateur.</p>
+            </div></content>
+            <link rel="http://opds-spec.org/acquisition" href="/opds/download/40814/epub/"
+                  length="551354" title="EPUB" type="application/epub+zip"/>
+          </entry>
+          <entry>
+            <title>La frontière</title>
+            <id>urn:uuid:5f79ea16-40ab-4171-8060-8b77ab5b2d89</id>
+            <author><name>Don Winslow</name></author>
+            <content type="xhtml"><div xmlns="http://www.w3.org/1999/xhtml">
+            SERIES: La Griffe du chien [3]<br/>
+                <p>Art Keller, ancien agent de la DEA.</p>
+            </div></content>
+            <link rel="http://opds-spec.org/acquisition" href="/opds/download/40811/epub/"
+                  length="964199" title="EPUB" type="application/epub+zip"/>
+          </entry>
+        </feed>
+    """.trimIndent()
+
+    /**
+     * The line that saves a sync.
+     *
+     * OPDS has no series field, so membership normally costs one request per
+     * series — 1729 of them against a server answering one at a time, measured at
+     * forty minutes. Calibre-Web writes it into the book instead, and reading it
+     * makes that pass unnecessary. Hence a test on the exact shape.
+     */
+    @Test
+    fun readsTheSeriesAndVolumeCalibreWebWritesIntoTheDescription() {
+        val entries = parser.parse(calibreWebNewFeed, root).entries
+
+        assertEquals("Skyward", entries[0].seriesName)
+        assertEquals(2.5, entries[0].seriesIndex)
+        // A book with no series line belongs to none, and must not inherit one.
+        assertNull(entries[1].seriesName)
+        assertNull(entries[1].seriesIndex)
+        // A name with spaces, and a whole number.
+        assertEquals("La Griffe du chien", entries[2].seriesName)
+        assertEquals(3.0, entries[2].seriesIndex)
+    }
+
+    /**
+     * The description is the paragraphs, not the whole flattened document.
+     *
+     * Every book summary in the library used to read "TAGS: Jeunesse, SF SERIES:
+     * Skyward [2.50] Genre: SF, SF.Space_Opera Alors que Spensa…", because the
+     * metadata lines sit in the same `content` as the blurb.
+     */
+    @Test
+    fun readsTheDescriptionWithoutTheMetadataLinesAroundIt() {
+        val entries = parser.parse(calibreWebNewFeed, root).entries
+
+        assertEquals("Alors que Spensa est coincée dans le nulle part.", entries[0].summary)
+        assertFalse(entries[0].summary!!.contains("SERIES:"))
+        assertFalse(entries[0].summary!!.contains("TAGS:"))
+        assertFalse(entries[0].summary!!.contains("Genre:"))
+    }
+
     private val navigationFeed = """
         <?xml version="1.0" encoding="UTF-8"?>
         <feed xmlns="http://www.w3.org/2005/Atom" xmlns:opds="http://opds-spec.org/2010/catalog">

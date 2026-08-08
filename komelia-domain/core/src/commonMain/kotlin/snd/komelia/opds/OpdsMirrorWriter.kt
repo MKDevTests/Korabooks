@@ -218,6 +218,41 @@ class OpdsMirrorWriter(private val repositories: OfflineRepositories) {
     }
 
     /**
+     * Puts the right number of volumes on every shelf.
+     *
+     * Needed because a shelf is now written once per book rather than once per
+     * series: the books pass learns "SERIES: Skyward [2]" from the book itself,
+     * and the volumes of one series are scattered across an alphabetical index,
+     * so each arrives alone and each write claimed the series held one book. The
+     * count is a property of the finished library, not of any one batch, so it is
+     * settled once at the end from the same single pass everything else uses.
+     *
+     * Both numbers, because two different screens read them: `bookCount` on the
+     * series row and `totalBookCount` in its metadata.
+     */
+    suspend fun refreshBookCounts(libraryId: KomgaLibraryId): Int {
+        val counts = seriesBookCounts(libraryId)
+        val stale = repositories.seriesRepository.findAllByLibraryId(libraryId)
+            .mapNotNull { series ->
+                val actual = counts[series.id] ?: 0
+                if (actual == series.bookCount) null else series to actual
+            }
+        if (stale.isEmpty()) return 0
+
+        repositories.transactionTemplate.execute {
+            for ((series, actual) in stale) {
+                repositories.seriesRepository.save(series.copy(bookCount = actual))
+                repositories.seriesMetadataRepository.find(series.id)?.let { metadata ->
+                    repositories.seriesMetadataRepository.save(
+                        metadata.copy(totalBookCount = actual)
+                    )
+                }
+            }
+        }
+        return stale.size
+    }
+
+    /**
      * Moves books into their series, and writes nothing else about them.
      *
      * The grouping pass revisits books the first pass already wrote in full.

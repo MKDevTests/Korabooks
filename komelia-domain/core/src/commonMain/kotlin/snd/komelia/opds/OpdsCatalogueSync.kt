@@ -231,9 +231,13 @@ class OpdsCatalogueSync(
             onProgress(OpdsSyncProgress.Writing(books, books, title))
         }
 
-        // Books first, and each one on its own shelf. This is the half that
-        // makes a library exist: it costs a few hundred requests, and when it
-        // is done everything is there to browse and to read.
+        // How many books named their own series. Zero means the catalogue does
+        // not say, and the grouping pass is the only way to find out.
+        var named = 0
+
+        // Books first. This is the half that makes a library exist: it costs a
+        // few hundred requests, and when it is done everything is there to browse
+        // and to read — grouped too, on a catalogue that names its series.
         //
         // The walk hands shelves to a queue instead of writing them, and one
         // coroutine drains it. Writing inline was writing them under the walk's
@@ -259,7 +263,7 @@ class OpdsCatalogueSync(
                 flush("")
             }
 
-            walker.walkBooks(
+            named = walker.walkBooks(
                 rootUrl = catalogueUrl,
                 onProgress = { onProgress(OpdsSyncProgress.Walking(it.shelves, it.books, it.current)) },
             ) { shelf ->
@@ -278,19 +282,26 @@ class OpdsCatalogueSync(
         // grouping pass interrupted halfway leaves a library that is merely
         // less tidy, never one that is missing something.
         //
-        // Skipped outright when the catalogue holds exactly the books it held
-        // last time and the shelves are already grouped. Membership cannot have
-        // changed without a book appearing or disappearing, and now that the
-        // books pass leaves grouped series alone there is nothing to repair
-        // either. This is the difference between forty-five minutes and five.
+        // Skipped outright in two cases, and this is where a sync stops costing
+        // forty-five minutes:
         //
-        // Deliberately counted rather than trusted: [force] exists for the case
-        // this reasoning cannot cover — a grouping that was wrong to begin with,
-        // or a book swapped for another one-for-one.
-        val settled = grouped.isNotEmpty() && books == booksBefore && !force
+        //  - **the catalogue named its series itself**, so the books pass already
+        //    did the grouping and opening 1729 shelves would only confirm it. The
+        //    single biggest win available, and it is free.
+        //  - **nothing moved**: the catalogue holds exactly the books it held last
+        //    time and the shelves are already grouped. Membership cannot have
+        //    changed without a book appearing or disappearing, and the books pass
+        //    no longer tears grouped series apart, so there is nothing to repair.
+        //
+        // [force] overrides both, for what neither can see: a grouping that was
+        // wrong when it was made, or a volume swapped for another one-for-one.
+        val settledByCatalogue = named > 0
+        val settledByCount = grouped.isNotEmpty() && books == booksBefore
+        val settled = !force && (settledByCatalogue || settledByCount)
         if (settled) {
             logger.info {
-                "OPDS grouping skipped: $books books, unchanged, ${grouped.size} shelves already grouped"
+                if (settledByCatalogue) "OPDS grouping skipped: the catalogue named $named books' series"
+                else "OPDS grouping skipped: $books books, unchanged, ${grouped.size} shelves already grouped"
             }
             kept += before.keys
         }
@@ -377,7 +388,11 @@ class OpdsCatalogueSync(
         // were real a minute ago, which is why they are found by being empty
         // rather than by being predicted.
         val emptied = writer.pruneEmptySeries(libraryId)
-        logger.info { "OPDS sync done: ${kept.size - emptied} shelves, $books books" }
+        // Last, because it counts what the pruning leaves behind.
+        val recounted = writer.refreshBookCounts(libraryId)
+        logger.info {
+            "OPDS sync done: ${kept.size - emptied} shelves, $books books, $recounted counts corrected"
+        }
         return OpdsSyncResult(libraryId, kept.size - emptied, books, covers)
     }
 

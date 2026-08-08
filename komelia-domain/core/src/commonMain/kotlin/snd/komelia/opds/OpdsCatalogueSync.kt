@@ -274,23 +274,60 @@ class OpdsCatalogueSync(
                 }
             }
 
-            // What a stopped pass already achieved, read once. One request per
-            // series and thousands of them is the whole cost of a sync, and a
-            // resumed pass that re-bought them would be a button that does
-            // nothing.
-            val already = if (resume) writer.groupedSeries(libraryId) else emptySet()
+            // What the mirror already holds, read once — one pass over the
+            // library rather than a question per series, the whole point being
+            // to stop doing things per series.
+            val counts = writer.seriesBookCounts(libraryId)
+
+            // What a stopped pass already achieved. A resumed pass trusts every
+            // grouped shelf on sight; that is the difference between the two
+            // buttons, and re-buying them would make one of them do nothing.
+            val already = if (resume) counts.filterValues { it > 1 }.keys else emptySet()
             if (already.isNotEmpty()) {
                 logger.info { "OPDS resuming: ${already.size} series already grouped" }
                 kept += already
             }
 
+            // Shelves the index says are unchanged, so they are neither read nor
+            // pruned. Recorded as they are decided because the walk is what asks.
+            val unchanged = mutableSetOf<KomgaSeriesId>()
+
             walker.walkSeries(
                 rootUrl = catalogueUrl,
                 onProgress = { onProgress(OpdsSyncProgress.Grouping(it.shelves, it.books, it.current)) },
-                skip = { title -> mapper.seriesId(title) in already },
+                skip = { title, count ->
+                    val id = mapper.seriesId(title)
+                    when {
+                        id in already -> true
+
+                        // The count the catalogue publishes against the count we
+                        // hold. Only above one: at one book a shelf is
+                        // indistinguishable from the standalone shelf the books
+                        // pass leaves behind, and a real single-volume series
+                        // would then never be grouped at all. Costing one
+                        // request per one-book series is the cheap half of that
+                        // trade.
+                        count != null && count > 1 && counts[id] == count -> {
+                            unchanged += id
+                            true
+                        }
+
+                        else -> false
+                    }
+                },
             ) { shelf -> queue.send(shelf) }
+
             queue.close()
             grouping.join()
+
+            // Not read, but still real: prune deletes every shelf absent from
+            // [kept], and skipping a series without saying so here would delete
+            // the library we just decided was up to date. After the join, because
+            // [kept] belongs to the grouping coroutine until it finishes.
+            if (unchanged.isNotEmpty()) {
+                logger.info { "OPDS ${unchanged.size} series unchanged by count — not re-read" }
+                kept += unchanged
+            }
         }
 
         writer.prune(libraryId, kept)

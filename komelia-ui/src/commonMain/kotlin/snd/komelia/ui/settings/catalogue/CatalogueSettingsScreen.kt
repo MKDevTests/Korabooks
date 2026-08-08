@@ -48,8 +48,10 @@ class CatalogueSettingsScreen : Screen {
                         "dernière fois, et s'arrête dès qu'il ne trouve rien de neuf. " +
                         "« Reprendre » continue une synchronisation interrompue sans " +
                         "relire les séries déjà regroupées. " +
-                        "« Tout resynchroniser » relit tout, y compris ce qui est déjà " +
-                        "là : comptez une requête par série, et longtemps. " +
+                        "« Tout resynchroniser » relit tous les livres, et parmi les " +
+                        "séries celles dont la taille a changé : le catalogue annonce " +
+                        "combien de tomes chaque série tient, et une série de trois " +
+                        "tomes qui en annonce toujours trois n'a rien à apprendre. " +
                         "La synchronisation continue si vous quittez cet écran.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,

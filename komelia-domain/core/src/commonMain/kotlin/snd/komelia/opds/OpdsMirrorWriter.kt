@@ -124,30 +124,38 @@ class OpdsMirrorWriter(private val repositories: OfflineRepositories) {
     suspend fun hasBook(id: KomgaBookId): Boolean = repositories.bookRepository.exists(id)
 
     /**
-     * The shelves that have already been through a grouping pass, so a resumed
-     * one can leave them alone.
+     * How many books each shelf of this library currently holds.
      *
-     * Nothing is checkpointed anywhere: the mirror is its own record. Holding
-     * two books or more is something a shelf can only have become by being
-     * grouped — the first pass gives every book a shelf of its own, and a
-     * one-book shelf is precisely what it leaves behind.
+     * Two questions are answered from this one pass, and both exist to stop the
+     * grouping pass doing things per series:
      *
-     * The cost of being wrong is lopsided on purpose. A real series of a single
-     * volume looks ungrouped and is read again, wasting one request; nothing is
-     * ever wrongly skipped, because two books never landed on one shelf by
-     * accident. Read in a single pass rather than asked per series, the whole
-     * point being to stop doing things per series.
+     *  - **which shelves have been grouped already**, for a resumed pass. Nothing
+     *    is checkpointed anywhere; the mirror is its own record. Holding two books
+     *    or more is something a shelf can only have become by being grouped — the
+     *    first pass gives every book a shelf of its own, and a one-book shelf is
+     *    precisely what it leaves behind. The cost of being wrong is lopsided on
+     *    purpose: a real single-volume series looks ungrouped and is read again,
+     *    wasting one request, while nothing is ever wrongly skipped, because two
+     *    books never landed on one shelf by accident.
+     *  - **whether a shelf has changed**, for a full one, by comparing against the
+     *    count the catalogue's own index publishes. A series that held three books
+     *    last week and says three books today has nothing to teach us, and opening
+     *    it is a request against a server that answers one at a time.
+     *
+     * Counted rather than read from a column because there is no such column —
+     * and counting it is one query per five hundred shelves, against thousands of
+     * round trips saved.
      */
-    suspend fun groupedSeries(libraryId: KomgaLibraryId): Set<KomgaSeriesId> {
+    suspend fun seriesBookCounts(libraryId: KomgaLibraryId): Map<KomgaSeriesId, Int> {
         val all = repositories.seriesRepository.findAllByLibraryId(libraryId).map { it.id }
-        if (all.isEmpty()) return emptySet()
+        if (all.isEmpty()) return emptyMap()
         val counts = mutableMapOf<KomgaSeriesId, Int>()
         all.chunked(IDS_PER_QUERY).forEach { slice ->
             repositories.bookRepository.findAllBySeriesIds(slice).forEach { book ->
                 counts[book.seriesId] = (counts[book.seriesId] ?: 0) + 1
             }
         }
-        return counts.filterValues { it > 1 }.keys
+        return counts
     }
 
     /**

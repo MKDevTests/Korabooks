@@ -73,7 +73,29 @@ data class OpdsEntry(
             ?: links.firstOrNull { it.rel == null || it.rel == OpdsRel.SUBSECTION }
 
     val isBook: Boolean get() = acquisitions.isNotEmpty()
+
+    /**
+     * How many books hang behind this shelf, when the index bothers to say.
+     *
+     * This is the only number in OPDS that can save a request instead of costing
+     * one: knowing that a series still holds three books is knowing there is
+     * nothing to learn by opening it. The grouping pass is one request per series
+     * and the server answers them one at a time, so every entry that answers here
+     * is a second or so off the sync.
+     *
+     * Two places, because catalogues disagree about where it goes. Calibre-Web
+     * has published it both as a `thr:count` attribute on the link and as a
+     * `<content>` reading "3 Books" — translated, so the words are not matched,
+     * only the number they start with. Neither is required by anything, hence the
+     * null: an index that says nothing costs exactly what it costs today.
+     */
+    val shelfCount: Int?
+        get() = navigation?.count
+            ?: summary?.let { LEADING_COUNT.find(it)?.groupValues?.get(1)?.toIntOrNull() }
 }
+
+/** A count at the start of a shelf's description — "3 Books", "3 Bücher", "3 livres". */
+private val LEADING_COUNT = Regex("^\\s*(\\d{1,6})\\b")
 
 data class OpdsAuthor(val name: String, val uri: String? = null)
 

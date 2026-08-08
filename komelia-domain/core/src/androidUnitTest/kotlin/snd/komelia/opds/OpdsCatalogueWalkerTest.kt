@@ -277,6 +277,124 @@ class OpdsCatalogueWalkerTest {
         assertEquals(listOf("Dune"), books(catalogue).map { it.title })
     }
 
+    /**
+     * A navigation entry that says how many books are behind it.
+     *
+     * Shaped like the two forms a catalogue has been seen to use, because the
+     * grouping pass now spends or saves a request on this one number.
+     */
+    private fun countedNav(title: String, href: String, count: Int?, asContent: Boolean = false) = OpdsEntry(
+        id = href,
+        title = title,
+        summary = if (asContent && count != null) "$count Books" else null,
+        links = listOf(
+            OpdsLink(
+                href = href,
+                type = OpdsMediaType.NAVIGATION,
+                count = if (asContent) null else count,
+            )
+        ),
+    )
+
+    /**
+     * The series index, shaped like Calibre-Web's: a letter, and the series
+     * underneath it. The letter matters — a series only reaches the skip
+     * predicate below the top level, where the entries are shelves rather than
+     * the letters an index divides itself by.
+     */
+    private fun seriesIndex(vararg entries: OpdsEntry) = mapOf(
+        "/opds" to feed(listOf(nav("Séries", "/opds/series"))),
+        "/opds/series" to feed(listOf(nav("D", "/opds/series/letter/D"))),
+        "/opds/series/letter/D" to feed(entries.toList()),
+    )
+
+    /**
+     * The whole point of the count: not asking.
+     *
+     * The grouping pass is one request per series against a server that answers
+     * them one at a time — measured at forty minutes for this catalogue, against
+     * four for every book in it. Nothing client-side fixes that, because the
+     * requests were already made side by side. Only *fewer* requests do, and a
+     * series whose size the index still reports as three is a series with nothing
+     * to say.
+     */
+    @Test
+    fun doesNotOpenASeriesTheIndexSaysIsUnchanged() = runTest {
+        val asked = mutableListOf<String>()
+        val catalogue = seriesIndex(
+            countedNav("Dune", "/opds/series/1", count = 2),
+            countedNav("Les Fourmis", "/opds/series/2", count = 3),
+        ) + mapOf(
+            "/opds/series/1" to feed(listOf(book("b1", "Dune"), book("b2", "Le Messie de Dune"))),
+            "/opds/series/2" to feed(listOf(book("b3", "Les Fourmis"))),
+        )
+        val walker = OpdsCatalogueWalker(fetch = { url ->
+            asked += url
+            catalogue[url] ?: feed(emptyList())
+        })
+
+        // Dune is known to hold two books already; nothing is known of the other.
+        val shelves = buildList {
+            walker.walkSeries("/opds", skip = { _, count -> count == 2 }) { add(it) }
+        }
+
+        assertEquals(listOf("Les Fourmis"), shelves.map { it.title })
+        assertTrue("/opds/series/1" !in asked, "the skipped series was never requested")
+        assertTrue("/opds/series/2" in asked, "the other one still was")
+    }
+
+    /** A size that moved is the one case where the shelf has to be re-read. */
+    @Test
+    fun opensASeriesWhoseCountChanged() = runTest {
+        val catalogue = seriesIndex(countedNav("Dune", "/opds/series/1", count = 3)) + mapOf(
+            "/opds/series/1" to feed(
+                listOf(book("b1", "Dune"), book("b2", "Le Messie de Dune"), book("b3", "Les Enfants de Dune"))
+            ),
+        )
+        val walker = walkerOver(catalogue)
+
+        // The mirror holds two; the index says three.
+        val shelves = buildList {
+            walker.walkSeries("/opds", skip = { _, count -> count == 2 }) { add(it) }
+        }
+
+        assertEquals(listOf("Dune"), shelves.map { it.title })
+        assertEquals(3, shelves.single().entries.size)
+    }
+
+    /**
+     * An index that publishes no count costs exactly what it costs today.
+     *
+     * Worth pinning down, because whether a server publishes one is not
+     * something this code gets to decide, and a walk that silently skipped
+     * everything on a null would mirror an empty library.
+     */
+    @Test
+    fun readsEverySeriesWhenTheIndexPublishesNoCount() = runTest {
+        val catalogue = seriesIndex(nav("Dune", "/opds/series/1")) + mapOf(
+            "/opds/series/1" to feed(listOf(book("b1", "Dune"), book("b2", "Le Messie de Dune"))),
+        )
+
+        val shelves = buildList {
+            walkerOver(catalogue).walkSeries("/opds", skip = { _, count -> count == 2 }) { add(it) }
+        }
+
+        assertEquals(listOf("Dune"), shelves.map { it.title })
+    }
+
+    /** Both places a catalogue has been seen to put the number. */
+    @Test
+    fun readsTheShelfCountFromEitherTheLinkOrTheDescription() {
+        assertEquals(4, countedNav("Dune", "/opds/series/1", count = 4).shelfCount)
+        assertEquals(4, countedNav("Dune", "/opds/series/1", count = 4, asContent = true).shelfCount)
+        assertEquals(null, nav("Dune", "/opds/series/1").shelfCount)
+        // A description that merely happens to start with something else.
+        assertEquals(
+            null,
+            nav("Dune", "/opds/series/1").copy(summary = "Roman de Frank Herbert").shelfCount,
+        )
+    }
+
     /** Without a count there is nothing to compute from, so we ask page by page. */
     @Test
     fun stillFollowsNextLinksWhenTheFeedIsNotCounted() = runTest {

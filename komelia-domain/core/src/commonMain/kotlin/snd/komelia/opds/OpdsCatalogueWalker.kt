@@ -228,12 +228,15 @@ class OpdsCatalogueWalker(
         rootUrl: String,
         onProgress: (OpdsWalkProgress) -> Unit = {},
         /**
-         * Series already known, by title, so a resumed pass does not buy them
-         * twice. Asked before the request rather than after: the request *is*
-         * the cost here, and answering "we had that one" once it has been paid
-         * for would save nothing at all.
+         * Whether a series can be left alone, given its title and whatever count
+         * the index published for it (null when it published none).
+         *
+         * Asked before the request rather than after: the request *is* the cost
+         * here, and answering "we had that one" once it has been paid for would
+         * save nothing at all. This is the only lever that shortens the grouping
+         * pass — see [OpdsEntry.shelfCount].
          */
-        skip: (String) -> Boolean = { false },
+        skip: (title: String, count: Int?) -> Boolean = { _, _ -> false },
         onShelf: suspend (OpdsShelf) -> Unit,
     ) {
         val root = fetch(rootUrl)
@@ -245,24 +248,54 @@ class OpdsCatalogueWalker(
         logger.info { "OPDS series index: ${seriesIndex ?: "not recognised"}" }
         if (seriesIndex == null) return
 
-        // Read in batches so the network is busy while the phone parses, then
-        // emitted in order — a shelf list that jumps around as it fills is
-        // worse than one that takes a moment longer.
         val branches = branchesUnder(seriesIndex, report = report, skip = skip)
         logger.info { "OPDS ${branches.size} series to read" }
-        for (batch in branches.chunked(PARALLELISM)) {
-            val fetched = coroutineScope {
-                batch.map { branch ->
-                    async { branch.title to buildList { forEachPage(branch) { addAll(it.entries.filter { e -> e.isBook }) } } }
-                }.awaitAll()
-            }
-            for ((title, books) in fetched) {
-                if (books.isEmpty()) continue
-                shelfCount++
-                bookCount += books.size
-                onShelf(OpdsShelf(title = title, entries = books))
-                onProgress(OpdsWalkProgress(shelfCount, bookCount, title))
-            }
+
+        // All series at once, the gate rationing whatever fetches remain — the
+        // same shape as [walkBooks], and for a much smaller reason.
+        //
+        // Worth being exact about, because this loop looks like where the time
+        // goes and is not: [branchesUnder] has already fetched the first page of
+        // every series in order to tell a series from a letter, and hands it over
+        // in [Branch.first]. So most of what runs here fetches nothing at all.
+        // Only a series long enough to paginate — forty volumes, say — asks for
+        // anything, and those are a handful.
+        //
+        // Batching sixteen and waiting for the batch was still wrong for that
+        // handful, and worse, a batch also waited on the slowest `onShelf`; all
+        // at once costs nothing to write and leaves no slot idle. It is not the
+        // half hour, and it is not claimed to be — the half hour is one request
+        // per series against a server that answers one at a time, and the only
+        // cure for that is [skip].
+        //
+        // What it costs: shelves arrive as they finish rather than in index
+        // order, so the title on the progress line jumps around.
+        //
+        // [inFlight] bounds how many finished-but-unsent shelves pile up. Without
+        // it, thousands of coroutines would each hold a built list while waiting
+        // to hand it over, and the queue they wait on holds six hundred.
+        val inFlight = Semaphore(PARALLELISM * 4)
+        val lock = Mutex()
+        coroutineScope {
+            branches.map { branch ->
+                async {
+                    inFlight.withPermit {
+                        val books = buildList {
+                            forEachPage(branch) { addAll(it.entries.filter { e -> e.isBook }) }
+                        }
+                        if (books.isNotEmpty()) {
+                            // Counters and emission under one lock: two shelves
+                            // finishing together must not both read shelfCount.
+                            lock.withLock {
+                                shelfCount++
+                                bookCount += books.size
+                                onShelf(OpdsShelf(title = branch.title, entries = books))
+                                onProgress(OpdsWalkProgress(shelfCount, bookCount, branch.title))
+                            }
+                        }
+                    }
+                }
+            }.awaitAll()
         }
         logger.info { "OPDS series walk done: $shelfCount series, $bookCount books" }
     }
@@ -313,7 +346,7 @@ class OpdsCatalogueWalker(
         url: String,
         depth: Int = 0,
         report: (String, Int) -> Unit = { _, _ -> },
-        skip: (String) -> Boolean = { false },
+        skip: (title: String, count: Int?) -> Boolean = { _, _ -> false },
     ): List<Branch> {
         if (depth >= maxDepth) return emptyList()
         val index = allPages(url)
@@ -342,9 +375,18 @@ class OpdsCatalogueWalker(
         // otherwise skip the whole of A on a resumed pass — the one book that
         // is its own shelf and the letter above it share a title, and by then
         // a title is all we have to go on.
-        val entries = if (depth > 0) chosen.filterNot { skip(it.title) } else chosen
+        val entries = if (depth > 0) chosen.filterNot { skip(it.title, it.shelfCount) } else chosen
         val avoided = chosen.size - entries.size
         if (avoided > 0) logger.info { "OPDS skipping $avoided already-known shelves under $url" }
+
+        // Whether the index publishes a count decides whether a sync of an
+        // unchanged catalogue costs one request per series or none, and it is a
+        // property of the server, not of the code — so it gets said out loud once
+        // per index rather than guessed at from a stopwatch.
+        if (depth > 0 && chosen.isNotEmpty()) {
+            val counted = chosen.count { it.shelfCount != null }
+            logger.info { "OPDS $counted/${chosen.size} shelves under $url publish a count" }
+        }
 
         // The peeks run together, and this is the whole cost of a sync.
         //

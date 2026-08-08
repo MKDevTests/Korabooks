@@ -91,6 +91,11 @@
                 android:name="snd.komelia.updates.PackageInstallerStatusReceiver"
                 android:exported="false"/>
 
+        <!-- The "Arrêter" action on the catalogue sync notification. -->
+        <receiver
+                android:name="snd.komelia.opds.OpdsSyncStopReceiver"
+                android:exported="false"/>
+
         <receiver
                 android:name="snd.komelia.widget.NextBookWidgetReceiver"
                 android:exported="false"

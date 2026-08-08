@@ -20,6 +20,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
 import ch.qos.logback.classic.LoggerContext
@@ -47,6 +48,23 @@ class App : Application() {
         startWidgetRefresher()
         observeAppBackgroundForWidgetRefresh()
         observeToolkitCompletion()
+        observeCatalogueSync()
+    }
+
+    /**
+     * Shows a catalogue sync in the notification shade for as long as it runs.
+     *
+     * Waits on [dependencies] rather than reading it: the container is built
+     * asynchronously, and on a cold start this runs first. Once it appears the
+     * notifier lives as long as the process, which is the right lifetime — the
+     * sync outlives every screen by design.
+     */
+    private fun observeCatalogueSync() {
+        appScope.launch {
+            val container = dependencies.filterNotNull().first()
+            snd.komelia.opds.OpdsSyncNotifier(applicationContext, container.opdsCatalogue)
+                .observe(appScope)
+        }
     }
 
     /**
@@ -183,6 +201,14 @@ class App : Application() {
                     .setName("Autobackup failures")
                     .setDescription("Shown when an automatic settings backup cannot be written.")
                     .setShowBadge(true)
+                    .build(),
+                // Low importance: a sync that runs for hours must be visible
+                // without making a sound every time it turns a page.
+                NotificationChannelCompat
+                    .Builder(snd.komelia.opds.catalogueSyncChannelId, IMPORTANCE_LOW)
+                    .setName("Synchronisation du catalogue")
+                    .setDescription("Progression de la lecture du catalogue Calibre-Web.")
+                    .setShowBadge(false)
                     .build(),
                 NotificationChannelCompat
                     .Builder(toolkitChannelId, NotificationManagerCompat.IMPORTANCE_DEFAULT)

@@ -8,6 +8,7 @@ import cafe.adriel.voyager.core.model.screenModelScope
 import kotlinx.coroutines.launch
 import snd.komelia.opds.OpdsCatalogueService
 import snd.komelia.opds.OpdsSyncProgress
+import snd.komelia.opds.describe
 import snd.komelia.opds.OpdsSyncState
 
 /**
@@ -65,7 +66,7 @@ class CatalogueSettingsViewModel(
                 syncing = state is OpdsSyncState.Running
                 when (state) {
                     is OpdsSyncState.Idle -> Unit
-                    is OpdsSyncState.Running -> state.progress?.let { status = describe(it) }
+                    is OpdsSyncState.Running -> state.progress?.let { status = it.describe() }
                     is OpdsSyncState.Done -> status =
                         "${state.result.shelves} séries, ${state.result.books} livres"
                     is OpdsSyncState.Failed -> error = state.message
@@ -137,19 +138,8 @@ class CatalogueSettingsViewModel(
 
     fun cancelSync() = catalogue.cancelSync()
 
-    private fun describe(progress: OpdsSyncProgress) = when (progress) {
-        is OpdsSyncProgress.Walking ->
-            "Lecture du catalogue — ${progress.books} livres, ${progress.current}"
-        is OpdsSyncProgress.Writing ->
-            "${progress.done} livres enregistrés"
-        // The grouping pass spends its first stretch reading the series index —
-        // thousands of requests before a single series has been regrouped.
-        // Calling that "Regroupement — 0 séries" is what made the sync look
-        // stuck exactly where it was working hardest.
-        is OpdsSyncProgress.Grouping ->
-            if (progress.series == 0) "Lecture des séries — ${progress.current}"
-            else "Regroupement — ${progress.series} séries, ${progress.current}"
-    }
+    // describe() moved next to OpdsSyncProgress: the notification says the same
+    // sentence now, and two copies would have drifted apart.
 
     private fun guarded(block: suspend () -> Unit) {
         if (busy) return

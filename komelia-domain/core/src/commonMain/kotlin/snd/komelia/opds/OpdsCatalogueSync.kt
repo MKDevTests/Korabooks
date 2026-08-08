@@ -51,6 +51,27 @@ sealed interface OpdsSyncProgress {
 }
 
 /**
+ * One sentence saying where a sync is, for a human to read.
+ *
+ * Here rather than in a screen because two places show it now — the catalogue
+ * settings and the notification that keeps a multi-hour sync visible when the
+ * app is not on screen — and two copies of this text would drift apart on the
+ * first wording change.
+ */
+fun OpdsSyncProgress.describe(): String = when (this) {
+    is OpdsSyncProgress.Walking -> "Lecture du catalogue — $books livres, $current"
+    is OpdsSyncProgress.Writing -> "$done livres enregistrés"
+
+    // The grouping pass spends its first stretch reading the series index —
+    // thousands of requests before a single series has been regrouped. Calling
+    // that "Regroupement — 0 séries" is what made the sync look stuck exactly
+    // where it was working hardest.
+    is OpdsSyncProgress.Grouping ->
+        if (series == 0) "Lecture des séries — $current"
+        else "Regroupement — $series séries, $current"
+}
+
+/**
  * Reads a catalogue and writes it into the local mirror.
  *
  * The three steps are kept apart on purpose — walking is where a server's shape

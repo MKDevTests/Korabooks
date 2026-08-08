@@ -15,6 +15,7 @@ import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import snd.komelia.settings.model.ServerProfile
+import snd.komelia.opds.DEFAULT_OPDS_URL_HINT
 import snd.komelia.ui.LocalViewModelFactory
 import snd.komelia.ui.dialogs.ConfirmationDialog
 import snd.komelia.ui.login.LoginScreen
@@ -186,7 +187,7 @@ class AppServerManagementScreen : Screen {
                 OutlinedTextField(
                     value = newUrl,
                     onValueChange = { newUrl = it },
-                    label = { Text("http://192.168.x.x:25600 or https://…") },
+                    label = { Text("$DEFAULT_OPDS_URL_HINT or https://…") },
                     singleLine = true,
                     modifier = Modifier.weight(1f)
                 )

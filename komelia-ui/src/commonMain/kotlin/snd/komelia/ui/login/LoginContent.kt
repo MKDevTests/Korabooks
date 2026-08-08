@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import snd.komelia.settings.model.ServerProfile
+import snd.komelia.opds.DEFAULT_OPDS_URL
 import snd.komelia.ui.LocalPlatform
 import snd.komelia.ui.common.components.DropdownChoiceMenu
 import snd.komelia.ui.common.components.LabeledEntry
@@ -167,7 +168,7 @@ fun ColumnScope.LoginForm(
                 .withTextFieldNavigation()
                 .focusRequester(first)
                 .focusProperties { next = second },
-            placeholder = { Text("localhost:25600") }
+            placeholder = { Text(DEFAULT_OPDS_URL) }
         )
 
         OutlinedTextField(

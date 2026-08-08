@@ -1,6 +1,7 @@
 package snd.komelia.db
 
 import kotlinx.serialization.Serializable
+import snd.komelia.opds.DEFAULT_OPDS_URL
 import snd.komelia.settings.model.AppTheme
 import snd.komelia.settings.model.AutobackupFrequency
 import snd.komelia.settings.model.BooksLayout
@@ -11,7 +12,7 @@ import kotlin.time.Instant
 @Serializable
 data class AppSettings(
     val username: String = "admin@example.org",
-    val serverUrl: String = "http://localhost:25600",
+    val serverUrl: String = DEFAULT_OPDS_URL,
 
     /**
      * Alternate URLs for the *same* Komga server (e.g. a LAN IP at home and a

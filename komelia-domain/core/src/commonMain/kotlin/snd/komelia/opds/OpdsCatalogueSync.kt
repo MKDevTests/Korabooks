@@ -417,8 +417,8 @@ class OpdsCatalogueSync(
         // were real a minute ago, which is why they are found by being empty
         // rather than by being predicted.
         val emptied = writer.pruneEmptySeries(libraryId)
-        // Last, because it counts what the pruning leaves behind.
-        val recounted = writer.refreshBookCounts(libraryId)
+        // Last, because it describes what the pruning leaves behind.
+        val recounted = writer.refreshSeriesAggregates(libraryId)
         if (unreadable > 0) {
             logger.warn { "OPDS $unreadable books skipped: no format this app can open" }
         }

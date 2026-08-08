@@ -218,38 +218,70 @@ class OpdsMirrorWriter(private val repositories: OfflineRepositories) {
     }
 
     /**
-     * Puts the right number of volumes on every shelf.
+     * Settles what a shelf can only know once all its volumes are in: how many
+     * there are, and what they have in common.
      *
      * Needed because a shelf is now written once per book rather than once per
-     * series: the books pass learns "SERIES: Skyward [2]" from the book itself,
+     * series. The books pass learns "SERIES: Skyward [2]" from the book itself,
      * and the volumes of one series are scattered across an alphabetical index,
-     * so each arrives alone and each write claimed the series held one book. The
-     * count is a property of the finished library, not of any one batch, so it is
-     * settled once at the end from the same single pass everything else uses.
+     * so each arrives alone — each write therefore claimed the series held one
+     * book, and stamped it with that one book's tags. A five volume series ended
+     * up counting one and wearing whichever tags its last-written volume had.
      *
-     * Both numbers, because two different screens read them: `bookCount` on the
-     * series row and `totalBookCount` in its metadata.
+     * All of it is a property of the finished library rather than of any batch,
+     * so it is computed here, once, from one pass over the shelves.
      */
-    suspend fun refreshBookCounts(libraryId: KomgaLibraryId): Int {
-        val counts = seriesBookCounts(libraryId)
-        val stale = repositories.seriesRepository.findAllByLibraryId(libraryId)
-            .mapNotNull { series ->
-                val actual = counts[series.id] ?: 0
-                if (actual == series.bookCount) null else series to actual
-            }
-        if (stale.isEmpty()) return 0
+    suspend fun refreshSeriesAggregates(libraryId: KomgaLibraryId): Int {
+        val series = repositories.seriesRepository.findAllByLibraryId(libraryId)
+        if (series.isEmpty()) return 0
 
+        // Which books sit on which shelf, and their tags — read in slices for the
+        // same reason everything else here is: a library holds ten thousand of them.
+        val bookIdsBySeries = mutableMapOf<KomgaSeriesId, MutableList<KomgaBookId>>()
+        series.map { it.id }.chunked(IDS_PER_QUERY).forEach { slice ->
+            repositories.bookRepository.findAllBySeriesIds(slice).forEach { book ->
+                bookIdsBySeries.getOrPut(book.seriesId) { mutableListOf() } += book.id
+            }
+        }
+        val metadataByBook = bookIdsBySeries.values.flatten()
+            .chunked(IDS_PER_QUERY)
+            .flatMap { repositories.bookMetadataRepository.findAllByIds(it) }
+            .associateBy { it.bookId }
+
+        var changed = 0
         repositories.transactionTemplate.execute {
-            for ((series, actual) in stale) {
-                repositories.seriesRepository.save(series.copy(bookCount = actual))
-                repositories.seriesMetadataRepository.find(series.id)?.let { metadata ->
-                    repositories.seriesMetadataRepository.save(
-                        metadata.copy(totalBookCount = actual)
-                    )
+            for (shelf in series) {
+                val bookIds = bookIdsBySeries[shelf.id] ?: emptyList()
+                val metadata = bookIds.mapNotNull { metadataByBook[it] }
+                // Sorted so the chips do not reshuffle between two syncs, and
+                // distinct because a five volume series repeats its own tags five
+                // times over.
+                val tags = metadata.flatMap { it.tags }.distinct().sorted()
+                val authors = metadata.flatMap { it.authors }.distinct()
+
+                if (bookIds.size != shelf.bookCount) {
+                    repositories.seriesRepository.save(shelf.copy(bookCount = bookIds.size))
+                    changed++
+                }
+                repositories.seriesMetadataRepository.find(shelf.id)?.let { current ->
+                    if (current.totalBookCount != bookIds.size || current.genres != tags) {
+                        repositories.seriesMetadataRepository.save(
+                            current.copy(totalBookCount = bookIds.size, genres = tags)
+                        )
+                    }
+                }
+                // The aggregation row is what the series page reads for the tag
+                // chips and the credits; the mapper filled it from one volume.
+                repositories.bookMetadataAggregationRepository.find(shelf.id)?.let { current ->
+                    if (current.tags != tags.toSet() || current.authors != authors) {
+                        repositories.bookMetadataAggregationRepository.save(
+                            current.copy(tags = tags.toSet(), authors = authors)
+                        )
+                    }
                 }
             }
         }
-        return stale.size
+        return changed
     }
 
     /**

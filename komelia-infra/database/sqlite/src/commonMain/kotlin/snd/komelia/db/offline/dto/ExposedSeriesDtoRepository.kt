@@ -176,7 +176,9 @@ class ExposedSeriesDtoRepository(
             val count = seriesTable
                 .join(
                     otherTable = seriesMetaTable,
-                    joinType = JoinType.LEFT,
+                    // INNER, like selectBase — see the note there. Both queries
+                    // must join the same way or the count contradicts the page.
+                    joinType = JoinType.INNER,
                     onColumn = seriesTable.id,
                     otherColumn = seriesMetaTable.seriesId
                 )
@@ -247,7 +249,22 @@ class ExposedSeriesDtoRepository(
         return seriesTable
             .join(
                 otherTable = seriesMetaTable,
-                joinType = JoinType.LEFT,
+                // INNER, not LEFT, and the default sort is why. The grid orders
+                // on seriesMetaTable.titleSort; with a LEFT join SQLite must
+                // drive the scan from SERIES, so it cannot use an index on the
+                // joined table and sorts all 6 825 rows into a temporary B-tree
+                // for every page — 23 ms for page 1, 298 ms once OFFSET is deep.
+                // INNER lets it scan the title_sort index instead: 2 ms and
+                // 23 ms. See V5__series_title_sort_index.sql for the numbers.
+                //
+                // Safe because metadata is written for every series and none is
+                // missing (checked on the reference mirror: 6 825 series, 6 825
+                // metadata rows, zero orphans). A series whose metadata has not
+                // landed yet — a sync interrupted between the two writes — is
+                // now absent from the list until it does, where before it showed
+                // as a card with no title. Neither is right; the transient one
+                // is better than the permanent-looking one.
+                joinType = JoinType.INNER,
                 onColumn = seriesTable.id,
                 otherColumn = seriesMetaTable.seriesId
             )

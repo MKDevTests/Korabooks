@@ -1,0 +1,25 @@
+-- The sort the library page uses by default had no index.
+--
+-- V3 indexed the join columns, which fixed scrolling covers. It left the ORDER
+-- BY alone, and the library grid sorts on SERIES_METADATA.title_sort. Every page
+-- therefore scanned all 6 825 series and built a temporary B-tree to sort them,
+-- and OFFSET made it worse: SQLite has to sort the whole set before it can skip.
+--
+-- Measured with sqlite-jdbc on a byte-exact copy of the reference mirror
+-- (75 112 448 bytes, 6 825 series, 10 713 books), median of 20 runs of the query
+-- in the shape the repository issues it:
+--
+--   page 1                  23 ms -> 2 ms
+--   page 101 (offset 6000)  298 ms -> 23 ms
+--   count(*)                5 ms  -> 5 ms   (unchanged, it never sorted)
+--
+-- This index alone changes nothing, and that is worth knowing: with
+-- SERIES LEFT JOIN SERIES_METADATA, SQLite must drive the scan from SERIES, so
+-- an index on the joined table cannot order the result. The plan only becomes
+-- `SCAN sm USING INDEX idx_series_metadata_title_sort` once that join is INNER,
+-- which ExposedSeriesDtoRepository now does. Index and join type are one change
+-- in two files.
+--
+-- Costs nothing on disk: the index fit in pages the file already held (75 112 448
+-- bytes before and after), and took 133 ms to build on the reference mirror.
+CREATE INDEX idx_series_metadata_title_sort ON SERIES_METADATA (title_sort);

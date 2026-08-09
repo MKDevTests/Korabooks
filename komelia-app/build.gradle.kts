@@ -129,7 +129,7 @@ android {
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
         manifestPlaceholders["appLabel"] = "Korabooks"
-        versionCode = 10103
+        versionCode = 10104
         versionName = libs.versions.app.version.get()
 
         val enableSelfUpdates = when (androidVariant) {

@@ -2,7 +2,8 @@ package snd.komelia.ui.settings.catalogue
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -15,7 +16,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -32,6 +32,7 @@ import snd.komelia.ui.settings.SettingsScreenContainer
  */
 class CatalogueSettingsScreen : Screen {
 
+    @OptIn(ExperimentalLayoutApi::class)
     @Composable
     override fun Content() {
         val viewModelFactory = LocalViewModelFactory.current
@@ -108,9 +109,17 @@ class CatalogueSettingsScreen : Screen {
                     modifier = Modifier.fillMaxWidth(),
                 )
 
-                Row(
+                // Five buttons in a plain Row ran straight off the side of a
+                // phone. A Row neither wraps nor scrolls: it measures its
+                // children at the width they ask for and draws them past the
+                // edge, so "Tomes + séries" and "Refaire toutes les séries"
+                // were simply not on screen — the two the paragraph above tells
+                // you to use. FlowRow wraps onto as many lines as the width
+                // needs, and still fits on one line where there is room.
+                FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier.fillMaxWidth(),
                 ) {
                     TextButton(onClick = vm::test, enabled = !vm.busy && vm.url.isNotBlank()) {
                         Text("Tester")
@@ -118,6 +127,17 @@ class CatalogueSettingsScreen : Screen {
                     TextButton(onClick = vm::save, enabled = !vm.busy && vm.url.isNotBlank()) {
                         Text("Enregistrer")
                     }
+                }
+
+                // Kept in their own row: these start work that runs for
+                // minutes, and wrapping all five together would leave
+                // "Enregistrer" and "Refaire toutes les séries" side by side
+                // on the same line.
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
                     if (vm.syncing) {
                         Button(onClick = vm::cancelSync) { Text("Arrêter") }
                     } else {

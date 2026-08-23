@@ -61,7 +61,12 @@ class BookSearchHelper(
     }
 
     private fun KomgaSearchCondition.AnyOfBook.toBookCondition(): Pair<Op<Boolean>, Set<RequiredJoin>> {
-        return this.conditions.fold(Op.TRUE to emptySet()) { (accOp, accJoins), cond ->
+        // FALSE, because the neutral element of OR is FALSE. Seeded with TRUE,
+        // as it was, `TRUE OR <anything>` is true for every row: every `anyOf`
+        // block silently matched the whole library. Measured on the reference
+        // mirror before the fix: filtering on the genre Fantasy returned all
+        // 6 825 series instead of 605.
+        return this.conditions.fold(Op.FALSE to emptySet()) { (accOp, accJoins), cond ->
             val (op, joins) = toConditionInternal(cond)
             accOp.or(op) to (accJoins + joins)
         }

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.material.icons.Icons
@@ -17,6 +18,8 @@ import androidx.compose.material.icons.rounded.DownloadDone
 import androidx.compose.material.icons.rounded.LightMode
 import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -49,6 +52,7 @@ import snd.komelia.ui.LocalOfflineMode
 import snd.komelia.ui.LocalTheme
 import snd.komelia.ui.Theme
 import snd.komelia.ui.common.menus.LibraryActionsMenu
+import snd.komelia.opds.OpdsSyncState
 import snd.komelia.ui.common.menus.LibraryMenuActions
 import snd.komga.client.library.KomgaLibrary
 import snd.komelia.ui.LocalStrings
@@ -121,6 +125,38 @@ fun NewTopAppBar(
             // the flag narrows the library, the home shelves and search together.
             // No confirmation dialog: unlike leaving offline mode, this is undone
             // by tapping again.
+            // Catalogue refresh, left of the downloads filter. The same call
+            // as "Nouveaux tomes" on the catalogue settings screen: the sync
+            // that reads what appeared since last time, in seconds, without
+            // touching how books are arranged into series. The heavier passes
+            // stay on that screen, where the minutes they cost are written next
+            // to them.
+            //
+            // While it runs the icon becomes a spinner and the button stops
+            // responding. It says "something is happening" and no more on
+            // purpose: the sync notification already carries the counts and the
+            // stop button, and a second progress read-out in a 45dp bar would
+            // only be a worse copy of it.
+            val catalogueConfigured = mainScreenVm.catalogueConfigured.collectAsState().value
+            if (catalogueConfigured) {
+                val syncing = mainScreenVm.catalogueSyncState.collectAsState().value is OpdsSyncState.Running
+                IconButton(onClick = { mainScreenVm.refreshCatalogue() }, enabled = !syncing) {
+                    if (syncing) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp,
+                            color = iconColor,
+                        )
+                    } else {
+                        Icon(
+                            Icons.Rounded.Refresh,
+                            contentDescription = LocalStrings.current.ui.refreshCatalogue,
+                            tint = iconColor,
+                        )
+                    }
+                }
+            }
+
             if (isOffline) {
                 val downloadedOnly = mainScreenVm.downloadedOnly.collectAsState().value
                 IconButton(onClick = { mainScreenVm.toggleDownloadedOnly() }) {

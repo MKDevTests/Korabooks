@@ -12,11 +12,16 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import snd.komelia.AppNotification
 import snd.komelia.AppNotifications
 import snd.komelia.komga.api.KomgaLibraryApi
 import snd.komelia.offline.settings.OfflineSettingsRepository
+import snd.komelia.opds.OpdsCatalogueService
+import snd.komelia.opds.OpdsSyncState
 import snd.komelia.offline.tasks.OfflineTaskEmitter
 import snd.komelia.settings.CommonSettingsRepository
 import snd.komelia.settings.model.AppTheme
@@ -55,6 +60,7 @@ class MainScreenViewModel(
     private val settingsRepository: CommonSettingsRepository,
     private val taskEmitter: OfflineTaskEmitter,
     private val releaseNotesService: ReleaseNotesService,
+    private val opdsCatalogue: OpdsCatalogueService,
     val searchBarState: SearchBarState,
     val notificationsState: NotificationsState,
     val libraries: StateFlow<List<KomgaLibrary>>,
@@ -125,9 +131,64 @@ class MainScreenViewModel(
      */
     val releaseNotesToShow: MutableStateFlow<AppRelease?> = MutableStateFlow(null)
 
+    /**
+     * Where the catalogue sync is, straight from the service.
+     *
+     * The service is process-scoped, so this reads the same state the catalogue
+     * settings screen and the notification show: one sync, three views of it.
+     */
+    val catalogueSyncState: StateFlow<OpdsSyncState> = opdsCatalogue.syncState
+
+    /**
+     * Whether there is an address to sync against.
+     *
+     * The same predicate the service applies before it starts. In practice it is
+     * always true, because the address field defaults to the local Calibre-Web
+     * one; it is here so that a blank address hides a button that could only
+     * fail.
+     */
+    val catalogueConfigured = settingsRepository.getServerUrl()
+        .map { it.isNotBlank() }
+        .stateIn(screenModelScope, SharingStarted.Eagerly, true)
+
     init {
         screenModelScope.launch { startEventListener() }
         screenModelScope.launch { checkReleaseNotes() }
+        screenModelScope.launch { followCatalogueSync() }
+    }
+
+    /**
+     * Turns the end of a sync into something the user can see.
+     *
+     * `drop(1)` because the state flow replays where the last sync ended, which
+     * on a fresh view model is history rather than news — without it every
+     * launch after a failed sync would re-announce that failure.
+     */
+    private suspend fun followCatalogueSync() {
+        opdsCatalogue.syncState.drop(1).collect { state ->
+            when (state) {
+                // The books are in the mirror by now, and the page on screen
+                // still shows what it read before it. Without this, pressing
+                // refresh changes the database and apparently nothing else.
+                is OpdsSyncState.Done -> screenReloadFlow.tryEmit(Unit)
+                is OpdsSyncState.Failed ->
+                    appNotifications.add(AppNotification.Error("Catalogue : ${state.message}"))
+                else -> Unit
+            }
+        }
+    }
+
+    /**
+     * The top bar's refresh: new books only.
+     *
+     * Deliberately the cheap sync of the two — seconds, not minutes. It reads
+     * what appeared since last time and leaves the series arrangement alone;
+     * the heavier passes stay on the catalogue settings screen where their cost
+     * is written next to them. Pressing it while a sync runs is harmless:
+     * [OpdsCatalogueService.startSync] returns at once when one is under way.
+     */
+    fun refreshCatalogue() {
+        opdsCatalogue.startSync(recentOnly = true)
     }
 
     private suspend fun checkReleaseNotes() {

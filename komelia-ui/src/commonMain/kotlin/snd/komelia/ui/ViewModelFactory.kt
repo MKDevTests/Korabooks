@@ -241,6 +241,7 @@ class ViewModelFactory(
             settingsRepository = appRepositories.settingsRepository,
             taskEmitter = dependencies.offlineDependencies.taskEmitter,
             releaseNotesService = dependencies.releaseNotesService,
+            opdsCatalogue = dependencies.opdsCatalogue,
         )
     }
 

@@ -861,6 +861,7 @@ val EnStrings = AppStrings(
         "recentlyRead" to "Recently read",
         "recolorsTheTopRightBadge" to "Recolors the top-right badge on series cards when the series is Ended and every volume is owned",
         "refresh" to "Refresh",
+        "refreshCatalogue" to "Fetch new books",
         "refreshMetadata" to "Refresh metadata",
         "refreshMetadataForLibrary" to "Refresh metadata for library",
         "releaseDate" to "Release date",

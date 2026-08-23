@@ -749,6 +749,7 @@ class UiStrings(private val values: Map<String, String>) {
     val recentlyRead: String get() = at("recentlyRead")
     val recolorsTheTopRightBadge: String get() = at("recolorsTheTopRightBadge")
     val refresh: String get() = at("refresh")
+    val refreshCatalogue: String get() = at("refreshCatalogue")
     val refreshMetadata: String get() = at("refreshMetadata")
     val refreshMetadataForLibrary: String get() = at("refreshMetadataForLibrary")
     val releaseDate: String get() = at("releaseDate")

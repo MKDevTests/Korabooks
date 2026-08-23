@@ -873,6 +873,7 @@ val FrStrings = AppStrings(
         "recentlyRead" to "Lus récemment",
         "recolorsTheTopRightBadge" to "Recolore le badge en haut à droite quand la série est terminée et que tous les tomes sont présents",
         "refresh" to "Actualiser",
+        "refreshCatalogue" to "Nouveaux tomes",
         "refreshMetadata" to "Actualiser les métadonnées",
         "refreshMetadataForLibrary" to "Actualiser les métadonnées de la bibliothèque",
         "releaseDate" to "Date de parution",

@@ -98,12 +98,26 @@ class OneshotViewModel(
         if (state.value != Uninitialized) return
         initState()
         book.filterNotNull().combine(libraries) { book, libraries ->
+            // An empty list means "not loaded yet", not "your library is gone":
+            // the flow starts empty and is filled once, at sign-in. Reading that
+            // first emission as a failure is what left every one-book series on
+            // an error screen -- and nothing here ever put the screen back to
+            // Success afterwards, so a wait of a few hundred milliseconds looked
+            // permanent. While the library is null the screen shows its loading
+            // indicator, which is what a not-yet-loaded library should look like.
+            if (libraries.isEmpty()) return@combine
+
             val newLibrary = libraries.firstOrNull { it.id == book.libraryId }
-            if (newLibrary == null) {
-                mutableState.value =
-                    Error(IllegalStateException("Failed to find library for oneshot ${book.metadata.title}"))
-            }
             library.value = newLibrary
+            when {
+                newLibrary == null ->
+                    mutableState.value = Error(MissingLibraryException(book.metadata.title))
+                // Recover, but only from this screen's own missing-library
+                // error: clearing any error here would paper over a failed
+                // book or series load that has nothing to do with libraries.
+                state.value.let { it is Error && it.exception is MissingLibraryException } ->
+                    mutableState.value = Success(Unit)
+            }
         }.launchIn(screenModelScope)
 
         startKomgaEventListener()
@@ -130,7 +144,7 @@ class OneshotViewModel(
                     .also { this.book.value = it }
 
 
-            this.library.value = getLibraryOrThrow(currentBook)
+            this.library.value = resolveLibrary(currentBook)
         }
             .onSuccess { mutableState.value = Success(Unit) }
             .onFailure { mutableState.value = Error(it) }
@@ -146,7 +160,7 @@ class OneshotViewModel(
                         .also { book.value = it }
                 book.value = bookApi.getOne(currentBook.id)
                 series.value = seriesApi.getOneSeries(seriesId)
-                library.value = getLibraryOrThrow(currentBook)
+                library.value = resolveLibrary(currentBook)
             }
                 .onSuccess { mutableState.value = Success(Unit) }
                 .onFailure { mutableState.value = Error(it) }
@@ -178,12 +192,19 @@ class OneshotViewModel(
         }.onFailure { mutableState.value = Error(it) }
     }
 
-    private fun getLibraryOrThrow(book: KomeliaBook): KomgaLibrary {
-        val library = this.libraries.value.firstOrNull { it.id == book.libraryId }
-        if (library == null) {
-            throw IllegalStateException("Failed to find library for oneshot ${book.metadata.title}")
-        }
-        return library
+    /**
+     * The book's library, or null while the list is still on its way.
+     *
+     * Only a *loaded* list that does not contain the book's library is an error
+     * worth showing. An empty one is a race with sign-in, and used to be
+     * reported as "Failed to find library for oneshot ...", which is both wrong
+     * and unfixable by the reader.
+     */
+    private fun resolveLibrary(book: KomeliaBook): KomgaLibrary? {
+        val loaded = this.libraries.value
+        if (loaded.isEmpty()) return null
+        return loaded.firstOrNull { it.id == book.libraryId }
+            ?: throw MissingLibraryException(book.metadata.title)
     }
 
     fun stopKomgaEventHandler() {
@@ -215,3 +236,12 @@ class OneshotViewModel(
         }.launchIn(screenModelScope)
     }
 }
+
+/**
+ * Raised when the library list is loaded and the book's library is not in it.
+ *
+ * A named type rather than a bare [IllegalStateException] so the screen can
+ * recognise its own error and clear it once the library shows up.
+ */
+private class MissingLibraryException(title: String) :
+    IllegalStateException("Failed to find library for oneshot $title")

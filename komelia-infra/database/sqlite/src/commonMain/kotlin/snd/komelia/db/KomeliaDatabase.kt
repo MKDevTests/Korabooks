@@ -116,6 +116,18 @@ class KomeliaDatabase(databaseDir: String, serverId: Long? = null) {
                 maximumPoolSize = 3
                 minimumIdle = 1
                 idleTimeout = 60_000
+                // Not decoration: without it the pool dies in its constructor
+                // and takes the app with it. Hikari stamps its own default onto
+                // every connection it opens, and its default is read-write —
+                // `PoolBase.setupConnection` calls `setReadOnly(false)` on a
+                // connection xerial opened read-only, which xerial refuses with
+                // "Cannot change read-only flag after establishing a
+                // connection". Observed on the device, then reproduced against
+                // HikariCP 2.4.13 and fixed by this line: the requested value
+                // now matches the connection's, so the driver's no-op path is
+                // taken. Writes stay refused by SQLite itself
+                // ([SQLITE_READONLY]), which is checked, not assumed.
+                isReadOnly = true
             }
         )
 

@@ -1,0 +1,41 @@
+-- The series sort index, made covering, so a deep page stops reading the table.
+--
+-- V5 indexed SERIES_METADATA.title_sort and that fixed page 1. It left the deep
+-- pages alone: an index on `(title_sort)` carries the rowid, not `series_id`, so
+-- SQLite had to fetch every skipped row from the table to get the id it joins
+-- on. Page 362 of the Series tab therefore did ~6 800 random lookups in a 75 MB
+-- file before returning twenty rows — cheap on a desktop where the file is in
+-- the page cache, expensive on tablet flash, where it was measured at
+-- 543 ms to 1 404 ms.
+--
+-- Measured on a byte-exact copy of the reference mirror, in the shape the tab
+-- actually issues — which is NOT the plain sorted page. LibrarySeriesTabState
+-- adds `tag { isNotEqualTo("kora:hidden") }` to every query, unconditionally,
+-- and that becomes a NOT IN over a UNION of two subqueries. Benchmarking
+-- without it understated the cost by a third:
+--
+--   page 1                        0.5 ms ->  0.3 ms
+--   page 362 (offset 6 800)      23.4 ms ->  6.1 ms
+--
+-- EXPLAIN QUERY PLAN turns `SCAN ... USING INDEX idx_series_metadata_title_sort`
+-- + `SEARCH SERIES (id=?)` into `SCAN ... USING COVERING INDEX`: the skip walk
+-- now touches index pages only, which is exactly what slow storage needs.
+--
+-- Also measured and NOT done: rewriting the query to select the ids first and
+-- join afterwards. It takes the same page from 6.1 ms to 3.0 ms — two extra
+-- milliseconds in exchange for restructuring the query every screen in the app
+-- depends on. The index is the whole win; the rewrite is not worth its risk.
+CREATE INDEX idx_series_metadata_title_sort_id ON SERIES_METADATA (title_sort, series_id);
+
+-- V5's index is now a strict prefix of the one above, so it can only cost write
+-- time during a sync and space on disk. Dropping it is free.
+DROP INDEX idx_series_metadata_title_sort;
+
+-- Worth knowing before touching V6's expression indexes: `integrity_check` run
+-- by a DIFFERENT SQLite build than the one that wrote them reports thousands of
+-- phantom "row N missing from index" lines, because the two builds disagree on
+-- `lower()` for some inputs. Checked with the driver the app actually ships
+-- (xerial 3.51.3), the same file answers `ok`, and an audit of all 4 252
+-- distinct genres, tags and author names found the indexed and non-indexed
+-- results identical. The practical rule: verify with the app's SQLite, and if
+-- xerial is ever upgraded, ship a REINDEX migration with the bump.

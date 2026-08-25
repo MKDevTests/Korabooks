@@ -2,10 +2,8 @@ package snd.komelia.db.offline
 
 import org.jetbrains.exposed.v1.core.Column
 import org.jetbrains.exposed.v1.core.Op
-import org.jetbrains.exposed.v1.core.and
-import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.core.greater
-import org.jetbrains.exposed.v1.core.exists
+import org.jetbrains.exposed.v1.core.inSubQuery
 import org.jetbrains.exposed.v1.jdbc.select
 import snd.komelia.db.offline.tables.OfflineBookTable
 import snd.komelia.db.offline.tables.OfflineSettingsTable
@@ -47,10 +45,22 @@ internal fun bookIsDownloaded(): Op<Boolean> =
  * [seriesId] is the series-side column of the query being narrowed, so this
  * works whether the caller is selecting from SERIES or from something joined to
  * it.
+ *
+ * A list subquery, not a correlated `EXISTS`, and the difference is the whole
+ * cost of the switch. Correlated, SQLite had to walk the series in sort order
+ * and probe BOOK once per row until twenty matched — with one downloaded series
+ * out of 6 825 on the reference mirror, that is a full scan of the catalogue for
+ * every page: 42 ms, and an index only brought it to 26 ms because the scan
+ * itself never went away. Uncorrelated, the subquery is evaluated once against
+ * `idx_book_downloaded` (V6), which holds only the downloaded books, and the
+ * result drops under the timer's resolution.
+ *
+ * Same rows either way: "some book of this series is downloaded" and "this
+ * series is among those owning a downloaded book" are the same set.
  */
 internal fun seriesHasDownloadedBook(seriesId: Column<String>): Op<Boolean> =
-    exists(
+    seriesId.inSubQuery(
         OfflineBookTable
-            .select(OfflineBookTable.id)
-            .where { OfflineBookTable.seriesId.eq(seriesId) and bookIsDownloaded() }
+            .select(OfflineBookTable.seriesId)
+            .where { bookIsDownloaded() }
     )

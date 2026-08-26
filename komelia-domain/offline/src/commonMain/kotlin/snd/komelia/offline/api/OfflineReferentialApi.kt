@@ -179,6 +179,14 @@ class OfflineReferentialApi(
             libraryIds.isNotEmpty() -> referentialRepository.findAllSeriesReleaseDatesByLibraries(libraryIds)
             collectionId != null -> referentialRepository.findAllSeriesReleaseDatesByCollection(collectionId)
             else -> referentialRepository.findAllSeriesReleaseDates()
-        }.map { it.year.toString() }
+        }
+            // Years, not dates: the repository answers with distinct *dates*, and
+            // dropping the month and day collapses thousands of them onto a few
+            // dozen values. Without this the caller gets one entry per release
+            // date — 3 490 of them on the reference catalogue for 123 actual
+            // years — and the filter dropdown, which composes one row per option
+            // eagerly, simply never appears.
+            .map { it.year.toString() }
+            .distinct()
     }
 }

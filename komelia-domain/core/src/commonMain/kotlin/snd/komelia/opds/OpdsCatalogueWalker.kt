@@ -17,6 +17,30 @@ private val logger = KotlinLogging.logger { }
 private class StopWalk : Exception()
 
 /**
+ * What a walk of every book actually managed to read.
+ *
+ * The count alone was the answer for a long time, and it was the wrong answer:
+ * a walk that lost half the catalogue to a timing-out server returned six
+ * thousand two hundred books and nothing said that eleven thousand were on
+ * offer. A caller that cannot tell a small library from a truncated read of a
+ * large one cannot warn anybody.
+ *
+ * @param books distinct books actually read
+ * @param grouped how many named their own series — whether the grouping pass
+ *   has anything left to learn
+ * @param expected what the catalogue said it holds, when it says so at all.
+ *   Null means no branch published a count, not that nothing is missing.
+ * @param lostPages addresses given up on after every retry, including the
+ *   second pass
+ */
+data class OpdsBooksWalk(
+    val books: Int,
+    val grouped: Int,
+    val expected: Int?,
+    val lostPages: Int,
+)
+
+/**
  * Requests in flight at once.
  *
  * Sixteen keeps a home server's connection busy through the latency of the last
@@ -111,6 +135,22 @@ class OpdsCatalogueWalker(
     private suspend fun fetchLimited(url: String): OpdsFeed = gate.withPermit { fetch(url) }
 
     /**
+     * Addresses this walker asked for and never got.
+     *
+     * Kept rather than counted so they can be asked for again once the walk is
+     * over: by then the server is no longer answering fifteen other requests,
+     * and the page that timed out under load usually arrives on its own.
+     */
+    private val lost = mutableSetOf<String>()
+    private val lostLock = Mutex()
+
+    private suspend fun takeLost(): Set<String> = lostLock.withLock {
+        val taken = lost.toSet()
+        lost.clear()
+        taken
+    }
+
+    /**
      * A fetch a walk can survive losing — but not silently.
      *
      * Every failure here costs whole shelves: a dropped index entry takes its
@@ -131,6 +171,7 @@ class OpdsCatalogueWalker(
             if (attempt < ATTEMPTS - 1) delay(RETRY_BACKOFF_MS shl attempt)
         }
         logger.error { "OPDS giving up on $url" }
+        lostLock.withLock { lost.add(url) }
         return null
     }
 
@@ -151,11 +192,14 @@ class OpdsCatalogueWalker(
         rootUrl: String,
         onProgress: (OpdsWalkProgress) -> Unit = {},
         onShelf: suspend (OpdsShelf) -> Unit,
-    ): Int {
+    ): OpdsBooksWalk {
         val root = fetch(rootUrl)
         var shelfCount = 0
         var grouped = 0
         val seen = mutableSetOf<String>()
+        // Per branch, so a catalogue that counts some of its letters and not
+        // others yields no total rather than a total that is wrong.
+        val counts = mutableListOf<Int?>()
         val report = reporter(onProgress) { shelfCount to seen.size }
 
         logger.info {
@@ -183,41 +227,70 @@ class OpdsCatalogueWalker(
         // and a hundred and seventy pages — so a batch lasted as long as its
         // largest member with every other slot idle.
         val lock = Mutex()
+
+        suspend fun emit(page: OpdsFeed, branchTitle: String) {
+            val found = page.entries.filter { it.isBook }
+            lock.withLock {
+                for (book in found) {
+                    if (!seen.add(book.id)) continue
+                    shelfCount++
+                    // A book that names its own series goes straight
+                    // onto that shelf. One book per shelf still —
+                    // shelves are emitted as pages arrive and the
+                    // volumes of one series are scattered across the
+                    // alphabet — but the shelf's *identity* is the
+                    // series name, so they all land on the same row.
+                    // This is what makes the grouping pass optional:
+                    // see [OpdsEntry.seriesName].
+                    val series = book.seriesName
+                    if (series != null) {
+                        grouped++
+                        onShelf(OpdsShelf(series, listOf(book), standalone = false))
+                    } else {
+                        onShelf(OpdsShelf(book.title, listOf(book), standalone = true))
+                    }
+                }
+                onProgress(OpdsWalkProgress(shelfCount, seen.size, branchTitle))
+            }
+        }
+
         coroutineScope {
             branches.map { branch ->
                 async {
+                    var counted = false
                     forEachPage(branch) { page ->
-                        val found = page.entries.filter { it.isBook }
-                        lock.withLock {
-                            for (book in found) {
-                                if (!seen.add(book.id)) continue
-                                shelfCount++
-                                // A book that names its own series goes straight
-                                // onto that shelf. One book per shelf still —
-                                // shelves are emitted as pages arrive and the
-                                // volumes of one series are scattered across the
-                                // alphabet — but the shelf's *identity* is the
-                                // series name, so they all land on the same row.
-                                // This is what makes the grouping pass optional:
-                                // see [OpdsEntry.seriesName].
-                                val series = book.seriesName
-                                if (series != null) {
-                                    grouped++
-                                    onShelf(OpdsShelf(series, listOf(book), standalone = false))
-                                } else {
-                                    onShelf(OpdsShelf(book.title, listOf(book), standalone = true))
-                                }
-                            }
-                            onProgress(OpdsWalkProgress(shelfCount, seen.size, branch.title))
+                        // The catalogue's own figure, read off the branch's
+                        // first page: what the walk is later held against.
+                        if (!counted) {
+                            counted = true
+                            lock.withLock { counts.add(page.totalResults) }
                         }
+                        emit(page, branch.title)
                     }
                 }
             }.awaitAll()
         }
+
+        // Second pass over what the server would not give up, one address at a
+        // time. Under load a Calibre-Web index page past offset six thousand
+        // takes longer than the socket will wait; asked again with the walk
+        // finished and nothing else in flight, it usually answers.
+        val retryable = takeLost()
+        if (retryable.isNotEmpty()) {
+            logger.warn { "OPDS asking again for ${retryable.size} pages the server dropped" }
+            for (url in retryable) emit(fetchOrNull(url) ?: continue, "reprise")
+        }
+
+        val expected = if (counts.isEmpty() || counts.any { it == null }) null else counts.sumOf { it!! }
+        val stillLost = takeLost().size
         // Said out loud because it decides whether the next pass runs at all, and
         // whether a catalogue names its series is a property of the server.
-        logger.info { "OPDS books walk done: ${seen.size} books, $grouped named a series" }
-        return grouped
+        logger.info {
+            "OPDS books walk done: ${seen.size} books" +
+                (expected?.let { " of $it announced" } ?: " (the catalogue publishes no count)") +
+                ", $grouped named a series, $stillLost pages lost"
+        }
+        return OpdsBooksWalk(books = seen.size, grouped = grouped, expected = expected, lostPages = stillLost)
     }
 
     /**

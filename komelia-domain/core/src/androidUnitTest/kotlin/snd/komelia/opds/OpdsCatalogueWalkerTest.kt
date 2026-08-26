@@ -27,11 +27,12 @@ class OpdsCatalogueWalkerTest {
         links = listOf(OpdsLink(href = "/get/$id.epub", rel = OpdsRel.ACQUISITION, type = OpdsMediaType.EPUB)),
     )
 
-    private fun feed(entries: List<OpdsEntry>, next: String? = null) = OpdsFeed(
+    private fun feed(entries: List<OpdsEntry>, next: String? = null, total: Int? = null) = OpdsFeed(
         id = null,
         title = null,
         links = next?.let { listOf(OpdsLink(href = it, rel = OpdsRel.NEXT)) } ?: emptyList(),
         entries = entries,
+        totalResults = total,
     )
 
     private fun walkerOver(catalogue: Map<String, OpdsFeed>) =
@@ -421,7 +422,7 @@ class OpdsCatalogueWalkerTest {
         )
         val shelves = mutableListOf<OpdsShelf>()
 
-        val named = walkerOver(catalogue).walkBooks("/opds") { shelves += it }
+        val named = walkerOver(catalogue).walkBooks("/opds") { shelves += it }.grouped
 
         assertEquals(2, named, "two books named a series")
         // Volumes of one series arrive apart — the index is alphabetical — but
@@ -443,7 +444,8 @@ class OpdsCatalogueWalkerTest {
         // And the count the walk itself reports is zero, which is the signal the
         // grouping pass is still needed.
         val reported = walkerOver(duneCatalogue).walkBooks("/opds") { }
-        assertEquals(0, reported)
+        assertEquals(0, reported.grouped)
+        assertEquals(3, reported.books)
     }
 
     /** Without a count there is nothing to compute from, so we ask page by page. */
@@ -499,10 +501,41 @@ class OpdsCatalogueWalkerTest {
             catalogue[url] ?: feed(emptyList())
         })
 
-        val shelves = buildList { walker.walkBooks("/opds") { add(it) } }
+        val shelves = mutableListOf<OpdsShelf>()
+        val walk = walker.walkBooks("/opds") { shelves += it }
 
         assertEquals(listOf("Un"), shelves.map { it.title })
-        // Three addresses, three tries each, and then it stops.
-        assertEquals(9, asked)
+        // Three addresses, three tries each, and then it stops — then asks for
+        // the three once more, with the walk over and nothing else in flight.
+        assertEquals(18, asked)
+        assertEquals(3, walk.lostPages, "and says so, rather than reporting one book as the catalogue")
+    }
+
+    /**
+     * The number the catalogue publishes, kept so a caller can hold the walk
+     * against it. Every truncated run before this reported its own short count
+     * as the catalogue, and nothing could tell that from a small library.
+     */
+    @Test
+    fun reportsWhatTheCatalogueSaysItHolds() = runTest {
+        val catalogue = mapOf(
+            "/opds" to feed(listOf(nav("Auteurs", "/opds/author"))),
+            "/opds/author" to feed(listOf(nav("Anonyme", "/opds/author/1"))),
+            "/opds/author/1" to feed(listOf(book("b1", "Un")), total = 3),
+        )
+
+        val walk = walkerOver(catalogue).walkBooks("/opds") { }
+
+        assertEquals(1, walk.books)
+        assertEquals(3, walk.expected)
+    }
+
+    /** No count published is not the same as nothing missing. */
+    @Test
+    fun expectsNothingWhenTheCatalogueCountsNothing() = runTest {
+        val walk = walkerOver(duneCatalogue).walkBooks("/opds") { }
+
+        assertEquals(null, walk.expected)
+        assertEquals(0, walk.lostPages)
     }
 }

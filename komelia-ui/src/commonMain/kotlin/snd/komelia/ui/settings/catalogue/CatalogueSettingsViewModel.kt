@@ -61,8 +61,23 @@ class CatalogueSettingsViewModel(
                 when (state) {
                     is OpdsSyncState.Idle -> Unit
                     is OpdsSyncState.Running -> state.progress?.let { status = it.describe() }
-                    is OpdsSyncState.Done -> status =
-                        "${state.result.shelves} séries, ${state.result.books} livres"
+                    is OpdsSyncState.Done -> {
+                        status = "${state.result.shelves} séries, ${state.result.books} livres"
+                        // A truncated run used to end in exactly the same words
+                        // as a complete one, so a catalogue read half way
+                        // looked like a small library. Said in red, with the
+                        // number, and with what to do about it.
+                        error = if (state.result.complete) null else buildString {
+                            append("Catalogue lu en partie : ")
+                            if (state.result.missing > 0) {
+                                append("${state.result.missing} livres sur ")
+                                append("${state.result.expectedBooks} n'ont pas été lus")
+                            } else {
+                                append("${state.result.lostPages} pages d'index perdues")
+                            }
+                            append(". Relancez la synchronisation.")
+                        }
+                    }
                     is OpdsSyncState.Failed -> error = state.message
                 }
             }

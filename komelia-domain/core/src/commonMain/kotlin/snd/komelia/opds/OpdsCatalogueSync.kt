@@ -47,7 +47,28 @@ data class OpdsSyncResult(
     val shelves: Int,
     val books: Int,
     val covers: Int,
-)
+    /**
+     * What the catalogue said it holds, against what was read.
+     *
+     * Null on a quick sync, which reads the newest books on purpose and would
+     * be short by design, and on a catalogue that publishes no count.
+     */
+    val expectedBooks: Int? = null,
+    /** Index pages the server never gave up, after every retry. */
+    val lostPages: Int = 0,
+) {
+    /**
+     * Whether the catalogue was read whole.
+     *
+     * The question the reader actually has after a sync, and the one the old
+     * result could not answer: a run that lost half the index reported six
+     * thousand books in the same words a six thousand book library would.
+     */
+    val complete: Boolean get() = lostPages == 0 && (expectedBooks == null || books >= expectedBooks)
+
+    /** Books the catalogue announced and the walk never saw. */
+    val missing: Int get() = expectedBooks?.let { (it - books).coerceAtLeast(0) } ?: 0
+}
 
 /** Where the sync is, for a screen that shows it. */
 sealed interface OpdsSyncProgress {
@@ -246,9 +267,11 @@ class OpdsCatalogueSync(
             onProgress(OpdsSyncProgress.Writing(books, books, title))
         }
 
-        // How many books named their own series. Zero means the catalogue does
-        // not say, and the grouping pass is the only way to find out.
-        var named = 0
+        // What the books pass managed to read: how many books, how many named
+        // their own series (zero means the catalogue does not say, and the
+        // grouping pass is the only way to find out), and how much of the index
+        // the server never handed over.
+        var walk = OpdsBooksWalk(books = 0, grouped = 0, expected = null, lostPages = 0)
 
         /** Books the catalogue holds in no format this app can open. */
         var unreadable = 0
@@ -299,7 +322,7 @@ class OpdsCatalogueSync(
                 flush("")
             }
 
-            named = walker.walkBooks(
+            walk = walker.walkBooks(
                 rootUrl = catalogueUrl,
                 onProgress = { onProgress(OpdsSyncProgress.Walking(it.shelves, it.books, it.current)) },
             ) { shelf ->
@@ -331,6 +354,7 @@ class OpdsCatalogueSync(
         //
         // [force] overrides both, for what neither can see: a grouping that was
         // wrong when it was made, or a volume swapped for another one-for-one.
+        val named = walk.grouped
         val settledByCatalogue = named > 0
         val settledByCount = grouped.isNotEmpty() && books == booksBefore
         val settled = !force && (settledByCatalogue || settledByCount)
@@ -435,11 +459,28 @@ class OpdsCatalogueSync(
         if (unreadable > 0) {
             logger.warn { "OPDS $unreadable books skipped: no format this app can open" }
         }
+        val result = OpdsSyncResult(
+            libraryId = libraryId,
+            shelves = kept.size - emptied,
+            books = books,
+            covers = covers,
+            expectedBooks = walk.expected,
+            lostPages = walk.lostPages,
+        )
         logger.info {
-            "OPDS sync done: ${kept.size - emptied} shelves, $books books, " +
+            "OPDS sync done: ${result.shelves} shelves, $books books, " +
                 "$recounted counts corrected, $unreadable unreadable"
         }
-        return OpdsSyncResult(libraryId, kept.size - emptied, books, covers)
+        // Loud, and returned, because the failure this guards against is the
+        // quiet one: every earlier truncated run ended by announcing its own
+        // short count as the catalogue.
+        if (!result.complete) {
+            logger.error {
+                "OPDS sync INCOMPLETE: ${result.missing} of ${walk.expected} books never read, " +
+                    "${result.lostPages} index pages lost — run it again"
+            }
+        }
+        return result
     }
 
 }

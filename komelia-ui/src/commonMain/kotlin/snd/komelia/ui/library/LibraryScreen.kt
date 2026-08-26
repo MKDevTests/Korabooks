@@ -1,6 +1,24 @@
 package snd.komelia.ui.library
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.contentColorFor
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material.icons.filled.FilterListOff
+import androidx.compose.runtime.rememberUpdatedState
+import snd.komelia.ui.LocalFloatingActionButton
+import snd.komelia.ui.LocalTransparentNavBarPadding
+import snd.komelia.ui.LocalUseFloatingNavigationBar
+import snd.komelia.ui.common.FloatingFAB
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -548,14 +566,28 @@ class LibraryScreen(
     /**
      * The library seen as books rather than as shelves.
      *
-     * Search, first letter, sort: the three that make twenty thousand
-     * standalone books navigable at all. The richer filters of the series view
-     * are built on series metadata a mirrored catalogue does not have.
+     * Search, first letter and sort stay in the header — they are the three
+     * that make twenty thousand standalone books navigable at all, and they are
+     * used on nearly every visit. Everything else lives behind the same
+     * "Filtrer" FAB as the series view: read status, tags, authors, release
+     * year. See [LibraryBookFilter] for the ones a mirrored catalogue cannot
+     * answer and which are therefore absent.
      */
+    @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     private fun BooksTab(booksTabState: LibraryBooksTabState, beforeContent: @Composable () -> Unit) {
         val navigator = LocalNavigator.currentOrThrow
         LaunchedEffect(libraryId) { booksTabState.initialize() }
+
+        val filterState = booksTabState.filterState
+        val filter = filterState.state.collectAsState().value
+        val filterStrings = LocalStrings.current.seriesFilter
+        var showFilters by remember { mutableStateOf(false) }
+        val accentColor = LocalAccentColor.current
+        val fabContainerColor = accentColor ?: MaterialTheme.colorScheme.primaryContainer
+        val fabContentColor = if (accentColor != null) {
+            if (accentColor.luminance() > 0.5f) Color.Black else Color.White
+        } else contentColorFor(fabContainerColor)
 
         when (val state = booksTabState.state.collectAsState().value) {
             is Error -> ErrorContent(
@@ -563,74 +595,185 @@ class LibraryScreen(
                 onReload = { booksTabState.onPageChange(1) }
             )
 
-            else -> Column(Modifier.fillMaxSize()) {
-                beforeContent()
-                // Shown only when the grid is answering about one person: the
-                // chip is both the explanation for a short list and the way out
-                // of it.
-                booksTabState.authorFilter?.let { author ->
-                    FilterChip(
-                        selected = true,
-                        onClick = { booksTabState.onAuthorFilterChange(null) },
-                        label = { Text("Auteur : $author") },
-                        trailingIcon = { Icon(Icons.Default.Close, contentDescription = null) },
-                        shape = AppFilterChipDefaults.shape(),
-                        colors = AppFilterChipDefaults.filterChipColors(),
-                        border = AppFilterChipDefaults.filterChipBorder(true),
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                    )
-                }
-                OutlinedTextField(
-                    value = booksTabState.searchTerm,
-                    onValueChange = booksTabState::onSearchChange,
-                    label = { Text(LocalStrings.current.ui.search) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp),
-                )
-                LetterFilterBar(
-                    selected = booksTabState.letterFilter,
-                    onLetterClick = booksTabState::onLetterFilterChange,
-                )
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    LibraryBooksTabState.Sort.entries.forEach { sort ->
+            else -> Box(Modifier.fillMaxSize()) {
+                Column(Modifier.fillMaxSize()) {
+                    beforeContent()
+                    // Shown only when the grid is answering about one person: the
+                    // chip is both the explanation for a short list and the way out
+                    // of it.
+                    filter.authorScope?.let { author ->
                         FilterChip(
-                            selected = booksTabState.sortOrder == sort,
-                            onClick = { booksTabState.onSortChange(sort) },
-                            label = { Text(sort.label) },
+                            selected = true,
+                            onClick = { booksTabState.onAuthorFilterChange(null) },
+                            label = { Text("Auteur : $author") },
+                            trailingIcon = { Icon(Icons.Default.Close, contentDescription = null) },
                             shape = AppFilterChipDefaults.shape(),
                             colors = AppFilterChipDefaults.filterChipColors(),
-                            border = AppFilterChipDefaults.filterChipBorder(booksTabState.sortOrder == sort),
+                            border = AppFilterChipDefaults.filterChipBorder(true),
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
                         )
                     }
-                    if (booksTabState.hasActiveFilter) {
-                        TextButton(onClick = booksTabState::clearFilters) {
-                            Text(LocalStrings.current.ui.clearAll)
+                    OutlinedTextField(
+                        value = filter.searchTerm,
+                        onValueChange = filterState::onSearchTermChange,
+                        label = { Text(LocalStrings.current.ui.search) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp),
+                    )
+                    LetterFilterBar(
+                        selected = filter.letterFilter,
+                        onLetterClick = filterState::onLetterFilterChange,
+                    )
+                    // Six sorts do not fit a phone's width, so the row scrolls
+                    // rather than wraps: the counters below it must stay put.
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 10.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        LibraryBooksTabState.Sort.entries.forEach { sort ->
+                            FilterChip(
+                                selected = filter.sortOrder == sort,
+                                onClick = { filterState.onSortOrderChange(sort) },
+                                label = { Text(sort.label) },
+                                shape = AppFilterChipDefaults.shape(),
+                                colors = AppFilterChipDefaults.filterChipColors(),
+                                border = AppFilterChipDefaults.filterChipBorder(filter.sortOrder == sort),
+                            )
                         }
                     }
-                    Spacer(Modifier.weight(1f))
-                    Text(
-                        "${booksTabState.totalBooksCount} livres",
-                        style = MaterialTheme.typography.labelMedium,
-                    )
-                    PageSizeSelectionDropdown(
-                        currentSize = booksTabState.pageLoadSize.collectAsState().value,
-                        onPageSizeChange = booksTabState::onPageSizeChange,
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        if (filter.narrowsResults) {
+                            TextButton(onClick = filterState::reset) {
+                                Text(LocalStrings.current.ui.clearAll)
+                            }
+                        }
+                        Spacer(Modifier.weight(1f))
+                        Text(
+                            "${booksTabState.totalBooksCount} livres",
+                            style = MaterialTheme.typography.labelMedium,
+                        )
+                        PageSizeSelectionDropdown(
+                            currentSize = booksTabState.pageLoadSize.collectAsState().value,
+                            onPageSizeChange = booksTabState::onPageSizeChange,
+                        )
+                    }
+                    BookLazyCardGrid(
+                        books = booksTabState.books,
+                        onBookClick = { navigator.push(bookScreen(it)) },
+                        onBookReadClick = null,
+                        bookMenuActions = booksTabState.bookMenuActions(),
+                        totalPages = booksTabState.totalBooksPages,
+                        currentPage = booksTabState.currentBooksPage,
+                        onPageChange = booksTabState::onPageChange,
+                        minSize = booksTabState.cardWidth.collectAsState().value,
                     )
                 }
-                BookLazyCardGrid(
-                    books = booksTabState.books,
-                    onBookClick = { navigator.push(bookScreen(it)) },
-                    onBookReadClick = null,
-                    bookMenuActions = booksTabState.bookMenuActions(),
-                    totalPages = booksTabState.totalBooksPages,
-                    currentPage = booksTabState.currentBooksPage,
-                    onPageChange = booksTabState::onPageChange,
-                    minSize = booksTabState.cardWidth.collectAsState().value,
-                )
+
+                if (showFilters) {
+                    ModalBottomSheet(
+                        onDismissRequest = { showFilters = false },
+                        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+                        containerColor = MaterialTheme.colorScheme.surface,
+                    ) {
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .fillMaxHeight(0.75f)
+                                .verticalScroll(rememberScrollState())
+                                .padding(horizontal = 16.dp, vertical = 8.dp)
+                        ) {
+                            LibraryBookFilterContent(filterState = filterState)
+                        }
+                        HorizontalDivider()
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 12.dp)
+                                .windowInsetsPadding(WindowInsets.navigationBars),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End),
+                        ) {
+                            ExtendedFloatingActionButton(
+                                onClick = filterState::reset,
+                                containerColor = if (filterState.isChanged) fabContainerColor
+                                else MaterialTheme.colorScheme.surfaceVariant,
+                                contentColor = if (filterState.isChanged) fabContentColor
+                                else contentColorFor(MaterialTheme.colorScheme.surfaceVariant),
+                                icon = { Icon(Icons.Default.FilterListOff, null) },
+                                text = { Text(filterStrings.resetFilters) },
+                            )
+                            ExtendedFloatingActionButton(
+                                onClick = { showFilters = false },
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                icon = { Icon(Icons.Default.FilterList, null) },
+                                text = { Text(filterStrings.hideFilters) },
+                            )
+                        }
+                    }
+                }
+
+                // Same FAB as the series tab, by the same two routes: docked in
+                // the floating navigation bar when there is one, free-floating
+                // over the grid otherwise.
+                val extraBottomPadding = LocalTransparentNavBarPadding.current
+                if (LocalUseFloatingNavigationBar.current) {
+                    val fab = LocalFloatingActionButton.current
+                    val onShowFiltersClick = rememberUpdatedState { showFilters = true }
+                    val isChangedState = rememberUpdatedState(filterState.isChanged)
+                    val accentColorState = rememberUpdatedState(accentColor)
+                    DisposableEffect(filterState, showFilters) {
+                        if (!showFilters) {
+                            fab.value = filterState to {
+                                FloatingFAB(
+                                    icon = Icons.Default.FilterList,
+                                    onClick = { onShowFiltersClick.value() },
+                                    accentColor = accentColorState.value,
+                                    iconTint = if (isChangedState.value) Color(0xFFFFD600) else null
+                                )
+                            }
+                        } else if (fab.value?.first == filterState) {
+                            fab.value = null
+                        }
+                        onDispose {
+                            if (fab.value?.first == filterState) fab.value = null
+                        }
+                    }
+                } else {
+                    AnimatedVisibility(
+                        visible = !showFilters,
+                        enter = fadeIn(),
+                        exit = fadeOut(),
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .then(
+                                if (extraBottomPadding == 0.dp)
+                                    Modifier.windowInsetsPadding(WindowInsets.navigationBars)
+                                else Modifier
+                            )
+                            .padding(bottom = 16.dp + extraBottomPadding, end = 16.dp),
+                    ) {
+                        ExtendedFloatingActionButton(
+                            onClick = { showFilters = true },
+                            containerColor = fabContainerColor,
+                            contentColor = fabContentColor,
+                            icon = {
+                                Icon(
+                                    Icons.Default.FilterList,
+                                    null,
+                                    tint = if (filterState.isChanged) Color(0xFFFFD600) else fabContentColor,
+                                )
+                            },
+                            text = { Text(LocalStrings.current.ui.filter) },
+                        )
+                    }
+                }
             }
         }
     }

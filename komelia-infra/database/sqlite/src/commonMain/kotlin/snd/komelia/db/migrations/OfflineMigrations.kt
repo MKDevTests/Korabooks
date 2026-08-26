@@ -14,6 +14,7 @@ class OfflineMigrations : MigrationResourcesProvider() {
         "V5__series_title_sort_index.sql",
         "V6__perf_indexes.sql",
         "V7__series_sort_covering_index.sql",
+        "V8__book_filter_indexes.sql",
     )
 
     override suspend fun getMigration(name: String): ByteArray? {

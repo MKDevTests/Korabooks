@@ -139,6 +139,7 @@ class LibraryViewModel(
     )
     val booksTabState = LibraryBooksTabState(
         bookApi = bookApi,
+        referentialApi = referentialApi,
         notifications = appNotifications,
         komgaEvents = komgaEvents,
         settingsRepository = settingsRepository,

@@ -193,6 +193,19 @@ class ExposedOfflineBookRepository(database: Database) : OfflineBookRepository, 
         }
     }
 
+    override suspend fun countDownloaded(libraryId: KomgaLibraryId): Int {
+        return transaction {
+            bookTable
+                .select(bookTable.id)
+                .where {
+                    bookTable.libraryId.eq(libraryId.value)
+                        .and(bookTable.localFileModifiedDate.greater(0L))
+                }
+                .count()
+                .toInt()
+        }
+    }
+
     override suspend fun findDownloadedSeriesIds(seriesIds: List<KomgaSeriesId>): Set<KomgaSeriesId> {
         if (seriesIds.isEmpty()) return emptySet()
         return transaction {

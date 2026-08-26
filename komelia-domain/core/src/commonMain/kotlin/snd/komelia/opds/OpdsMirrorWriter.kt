@@ -209,6 +209,18 @@ class OpdsMirrorWriter(private val repositories: OfflineRepositories) {
         write(listOf(mapped), covers)
     }
 
+    /**
+     * How many books of this library have their file on the device.
+     *
+     * Read either side of a sync so that losing one cannot pass unnoticed. It
+     * did once: the books pass rewrote every row from the feed, and the two
+     * fields naming the downloaded file — which no catalogue knows about — went
+     * back to "nothing here". The files stayed on disk, orphaned, and the app
+     * offered to fetch them again.
+     */
+    suspend fun downloadedCount(libraryId: KomgaLibraryId): Int =
+        repositories.bookRepository.countDownloaded(libraryId)
+
     /** Whether the mirror already holds this book — the whole of the diff check. */
     suspend fun hasBook(id: KomgaBookId): Boolean = repositories.bookRepository.exists(id)
 
@@ -361,7 +373,8 @@ class OpdsMirrorWriter(private val repositories: OfflineRepositories) {
                 for (book in mapped.books) {
                     val current = existing[book.id]
                     if (current == null) {
-                        writeBook(book, null)
+                        // Genuinely new: there is no row, so there is no file.
+                        writeBook(book, null, existing = null)
                         unseen += book
                     } else if (current.seriesId != mapped.series.id) {
                         repositories.bookRepository.save(current.copy(seriesId = mapped.series.id))
@@ -380,8 +393,14 @@ class OpdsMirrorWriter(private val repositories: OfflineRepositories) {
     private suspend fun writeShelf(
         mapped: MappedShelf,
         covers: Map<KomgaBookId, String>,
-        parents: Map<KomgaBookId, KomgaSeriesId> = emptyMap(),
-        existing: Map<KomgaBookId, OfflineBook> = emptyMap(),
+        parents: Map<KomgaBookId, KomgaSeriesId>,
+        /**
+         * The rows being replaced. Not optional, and not defaulted: what it
+         * carries is the file on the device, which the catalogue cannot supply
+         * and a caller that forgets it destroys. A missing argument is a
+         * compile error rather than a reader's library quietly emptying.
+         */
+        existing: Map<KomgaBookId, OfflineBook>,
     ) {
         // Every book here already sits in a series: this shelf is the standalone
         // one the books pass would recreate, and writing it would both resurrect
@@ -492,7 +511,7 @@ class OpdsMirrorWriter(private val repositories: OfflineRepositories) {
         book: KomeliaBook,
         cover: String?,
         /** The row this book already has, whose local file this must not lose. */
-        existing: OfflineBook? = null,
+        existing: OfflineBook?,
     ) {
         repositories.bookRepository.save(
             OfflineBook(

@@ -57,6 +57,14 @@ data class OpdsSyncResult(
     val expectedBooks: Int? = null,
     /** Index pages the server never gave up, after every retry. */
     val lostPages: Int = 0,
+    /**
+     * Books that had their file on the device before this sync and not after.
+     *
+     * Always zero, and worth reporting precisely because of that: it went
+     * wrong once, silently, and the reader found out days later. A number that
+     * should be zero is only useful if somebody looks at it.
+     */
+    val downloadsLost: Int = 0,
 ) {
     /**
      * Whether the catalogue was read whole.
@@ -65,7 +73,9 @@ data class OpdsSyncResult(
      * result could not answer: a run that lost half the index reported six
      * thousand books in the same words a six thousand book library would.
      */
-    val complete: Boolean get() = lostPages == 0 && (expectedBooks == null || books >= expectedBooks)
+    val complete: Boolean
+        get() = lostPages == 0 && downloadsLost == 0 &&
+            (expectedBooks == null || books >= expectedBooks)
 
     /** Books the catalogue announced and the walk never saw. */
     val missing: Int get() = expectedBooks?.let { (it - books).coerceAtLeast(0) } ?: 0
@@ -259,6 +269,11 @@ class OpdsCatalogueSync(
         // are already grouped (so the books pass stops tearing them apart), and
         // how many books there were (so the grouping pass can be skipped when
         // the catalogue has not moved).
+        // The one thing a sync must never cost the reader. Everything else it
+        // touches can be rebuilt by running it again; a file it drops is a
+        // download to do over, and on a phone that is not always possible.
+        val downloadedBefore = writer.downloadedCount(libraryId)
+
         val before = writer.seriesBookCounts(libraryId)
         // Minus the shelves that hold two books because two books were merged
         // onto them. Those look grouped and are not, and sparing them would
@@ -490,6 +505,18 @@ class OpdsCatalogueSync(
         if (unreadable > 0) {
             logger.warn { "OPDS $unreadable books skipped: no format this app can open" }
         }
+        // Checked, not assumed. The rewrite that lost these once looked
+        // perfectly correct on the way in, and the loss surfaced days later as
+        // a book the reader thought was on the device.
+        val downloadedAfter = writer.downloadedCount(libraryId)
+        if (downloadedAfter < downloadedBefore) {
+            logger.error {
+                "OPDS ${downloadedBefore - downloadedAfter} downloaded books lost their file " +
+                    "during this sync ($downloadedBefore before, $downloadedAfter after) — " +
+                    "the files are still on disk and nothing points at them any more"
+            }
+        }
+
         val result = OpdsSyncResult(
             libraryId = libraryId,
             shelves = kept.size - emptied,
@@ -497,6 +524,7 @@ class OpdsCatalogueSync(
             covers = covers,
             expectedBooks = walk.expected,
             lostPages = walk.lostPages,
+            downloadsLost = (downloadedBefore - downloadedAfter).coerceAtLeast(0),
         )
         logger.info {
             "OPDS sync done: ${result.shelves} shelves, $books books, " +

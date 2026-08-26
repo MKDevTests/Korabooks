@@ -67,15 +67,29 @@ class CatalogueSettingsViewModel(
                         // as a complete one, so a catalogue read half way
                         // looked like a small library. Said in red, with the
                         // number, and with what to do about it.
-                        error = if (state.result.complete) null else buildString {
-                            append("Catalogue lu en partie : ")
-                            if (state.result.missing > 0) {
-                                append("${state.result.missing} livres sur ")
-                                append("${state.result.expectedBooks} n'ont pas été lus")
-                            } else {
-                                append("${state.result.lostPages} pages d'index perdues")
-                            }
-                            append(". Relancez la synchronisation.")
+                        //
+                        // Two failures, and they are not the same kind. A short
+                        // read is repaired by reading again; a lost download is
+                        // not repaired by anything the reader can do here, so
+                        // it is said first and it does not offer false comfort.
+                        val result = state.result
+                        error = when {
+                            result.downloadsLost > 0 ->
+                                "${result.downloadsLost} livres téléchargés ont perdu " +
+                                    "leur fichier pendant cette synchronisation. Les fichiers " +
+                                    "sont toujours sur l'appareil mais l'application ne les " +
+                                    "retrouve plus : signalez-le."
+
+                            result.missing > 0 ->
+                                "Catalogue lu en partie : ${result.missing} livres sur " +
+                                    "${result.expectedBooks} n'ont pas été lus. " +
+                                    "Relancez la synchronisation."
+
+                            result.lostPages > 0 ->
+                                "Catalogue lu en partie : ${result.lostPages} pages d'index " +
+                                    "perdues. Relancez la synchronisation."
+
+                            else -> null
                         }
                     }
                     is OpdsSyncState.Failed -> error = state.message

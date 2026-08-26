@@ -33,6 +33,17 @@ interface OfflineBookRepository {
      */
     suspend fun findDownloadedSeriesIds(seriesIds: List<KomgaSeriesId>): Set<KomgaSeriesId>
 
+    /**
+     * How many books of [libraryId] have their file on the device.
+     *
+     * A number worth watching rather than displaying: a sync re-reads every
+     * book row it holds, and the fields saying where the file is are the only
+     * ones the catalogue knows nothing about — so they are the ones a careless
+     * rewrite loses. It has happened. Counted before and after, the loss stops
+     * being silent.
+     */
+    suspend fun countDownloaded(libraryId: KomgaLibraryId): Int
+
     suspend fun findAllIdsBySeriesId(seriesId: KomgaSeriesId): List<KomgaBookId>
     suspend fun findAllIdsByLibraryId(libraryId: KomgaLibraryId): List<KomgaBookId>
     suspend fun get(id: KomgaBookId): OfflineBook

@@ -46,6 +46,11 @@ class AppMigrations : MigrationResourcesProvider() {
         "V37__thumbnail_presentation_settings.sql",
         "V38__card_shadow_and_corner_radius.sql",
         "V39__local_file_read_progress.sql",
+        // V40, V45 and V47 created the audio and transcription tables. The
+        // reader that used them is gone, but a migration that has already run
+        // on a device can never be unlisted: Flyway would see a checksum for a
+        // version it no longer knows and refuse to open the database. They stay
+        // here, and the tables they made stay empty.
         "V40__audio_folder.sql",
         "V41__use_floating_navigation_bar.sql",
         "V42__epub3_respect_publisher_colors.sql",

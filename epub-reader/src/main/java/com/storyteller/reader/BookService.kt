@@ -177,14 +177,6 @@ object BookService {
         return clips.filter { it.locator.href == locator.href }
     }
 
-    fun getFragment(bookUuid: String, clipUrl: String, position: Double): OverlayPar? {
-        val clips = this.clips[bookUuid] ?: return null
-
-        val clipsInUrl = clips.filter { it.audioResource == clipUrl }
-
-        return searchForClip(clipsInUrl, position)
-    }
-
     fun getPreviousFragment(bookUuid: String, locator: Locator): OverlayPar? {
         val currentFragment = locator.locations.fragments.firstOrNull() ?: return null
         val clips = this.clips[bookUuid] ?: return null

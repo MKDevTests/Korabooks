@@ -163,7 +163,6 @@ android {
             excludes += "**/libncnn*.so"
             excludes += "**/libopencv_java4.so"
             excludes += "**/libmlkit*.so"
-            excludes += "**/libwhisper*.so"
         }
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1,README.txt}"

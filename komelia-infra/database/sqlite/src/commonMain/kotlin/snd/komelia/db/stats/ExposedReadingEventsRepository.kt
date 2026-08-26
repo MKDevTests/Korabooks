@@ -27,7 +27,7 @@ import kotlin.time.Instant
  *
  * Design notes:
  * - Timestamps are stored as epoch-millis [Long] (same convention as the
- *   other tables in this module: audio_position, book_annotations…).
+ *   other tables in this module: book_annotations, epub_bookmarks…).
  * - Date-bucket queries (distinct dates, monthly buckets) intentionally
  *   fetch raw timestamps and aggregate in Kotlin rather than relying on
  *   SQLite-specific `strftime` / `date` functions. The event volume stays

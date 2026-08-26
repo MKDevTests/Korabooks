@@ -3,8 +3,8 @@ package snd.komelia.backup
 /**
  * Export and import the user's local settings as a single JSON document.
  * Intended for surviving downgrade-reinstalls and moving config between
- * devices. Does NOT cover reading state (progress, bookmarks, annotations,
- * audio positions) or server-coupled fields like credentials.
+ * devices. Does NOT cover reading state (progress, bookmarks, annotations)
+ * or server-coupled fields like credentials.
  */
 interface BackupService {
     /** Serialize the in-scope settings to a single JSON string. */

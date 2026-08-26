@@ -53,8 +53,4 @@ data class Epub3NativeSettings(
     val showLocationOverlay: Boolean = true,
     val publisherStyles: Boolean = false,
     val respectPublisherColors: Boolean = false,
-    val playbackSpeed: Double = 1.0,
-    val rewindEnabled: Boolean = true,
-    val rewindAfterInterruption: Double = 3.0,
-    val rewindAfterBreak: Double = 10.0,
 )

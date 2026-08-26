@@ -145,6 +145,7 @@ class LibraryViewModel(
         settingsRepository = settingsRepository,
         libraryId = libraryId,
         taskEmitter = taskEmitter,
+        librarySeriesFiltersRepository = librarySeriesFiltersRepository,
         screenModelScope = screenModelScope,
         cardWidth = cardWidth,
     )

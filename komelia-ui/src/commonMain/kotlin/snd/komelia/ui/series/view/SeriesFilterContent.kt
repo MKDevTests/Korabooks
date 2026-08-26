@@ -57,7 +57,6 @@ import snd.komelia.ui.series.SeriesFilterState.Completion.COMPLETE
 import snd.komelia.ui.series.SeriesFilterState.Completion.INCOMPLETE
 import snd.komelia.ui.series.SeriesFilterState.Format
 import snd.komga.client.book.KomgaReadStatus
-import snd.komga.client.series.KomgaSeriesStatus
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -156,14 +155,16 @@ fun SeriesFilterContent(
                 modifier = Modifier.width(width),
             )
 
-            FilterDropdownMultiChoice(
-                selectedOptions = currentFilter.publicationStatus
-                    .map { LabeledEntry(it, strings.forPublicationStatus(it)) },
-                options = KomgaSeriesStatus.entries.map { LabeledEntry(it, strings.forPublicationStatus(it)) },
-                onOptionSelect = { changed -> filterState.onPublicationStatusSelect(changed.value) },
-                label = strings.publicationStatus,
-                modifier = Modifier.width(width),
-            )
+            // "Statut de publication" is not offered.
+            //
+            // A Calibre-Web OPDS feed has no notion of a series being ongoing
+            // or ended, so the mirror writes ENDED for every one of them
+            // (OpdsMapping.kt). The dropdown could only ever offer one value,
+            // matching the whole catalogue or nothing.
+            //
+            // The field itself stays on SeriesFilter: a filter persisted by an
+            // earlier build still deserializes, and putting the control back
+            // would be a matter of restoring these lines.
 
             val authorsSelectedOptions = remember(currentFilter.authors) {
                 currentFilter.authors.distinctBy { it.name }.map { LabeledEntry(it, it.name) }
@@ -204,13 +205,20 @@ fun SeriesFilterContent(
                 modifier = Modifier.width(width),
             )
 
-            FilterDropdownMultiChoice(
-                selectedOptions = currentFilter.ageRatings.map { stringEntry(it) },
-                options = filterState.ageRatingsOptions.map { stringEntry(it) },
-                onOptionSelect = { changed -> filterState.onAgeRatingSelect(changed.value) },
-                label = strings.ageRating,
-                modifier = Modifier.width(width),
-            )
+            // Shown only if the catalogue has any age rating to offer, which a
+            // Calibre-Web mirror never does: the OPDS feed carries no such
+            // field and OpdsMapping writes null for every series. Data-driven
+            // rather than deleted, so a Komga server that does fill it keeps
+            // the control.
+            if (filterState.ageRatingsOptions.isNotEmpty()) {
+                FilterDropdownMultiChoice(
+                    selectedOptions = currentFilter.ageRatings.map { stringEntry(it) },
+                    options = filterState.ageRatingsOptions.map { stringEntry(it) },
+                    onOptionSelect = { changed -> filterState.onAgeRatingSelect(changed.value) },
+                    label = strings.ageRating,
+                    modifier = Modifier.width(width),
+                )
+            }
 
             Row(
                 modifier = Modifier.width(width),

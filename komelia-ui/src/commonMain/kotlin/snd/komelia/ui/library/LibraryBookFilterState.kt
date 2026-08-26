@@ -191,6 +191,12 @@ class LibraryBookFilterState(
         }
     }
 
+    /** Reinstates a persisted filter. The author scope is never restored. */
+    fun restore(filter: LibraryBookFilter) {
+        mutableFilterState.value = filter.copy(authorScope = null)
+        checkIfAllDefault()
+    }
+
     fun onSortOrderChange(sortOrder: Sort) {
         mutableFilterState.update { it.copy(sortOrder = sortOrder) }
         checkIfAllDefault()

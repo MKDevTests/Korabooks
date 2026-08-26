@@ -19,6 +19,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.Json
+import snd.komelia.libraryfilters.LibrarySeriesFiltersRepository
 import snd.komelia.komga.api.KomgaBookApi
 import snd.komelia.komga.api.KomgaReferentialApi
 import snd.komelia.komga.api.model.KomeliaBook
@@ -55,6 +57,7 @@ class LibraryBooksTabState(
     private val settingsRepository: CommonSettingsRepository,
     private val libraryId: KomgaLibraryId?,
     private val taskEmitter: OfflineTaskEmitter,
+    private val librarySeriesFiltersRepository: LibrarySeriesFiltersRepository,
     private val screenModelScope: CoroutineScope,
     val cardWidth: StateFlow<Dp>,
 ) {
@@ -97,10 +100,28 @@ class LibraryBooksTabState(
 
     private val reloadJobsFlow = MutableSharedFlow<Unit>(1, 0, DROP_OLDEST)
 
+    /**
+     * Where this tab's filter is persisted.
+     *
+     * It shares the series filters' table rather than getting one of its own:
+     * the store is a library id to a JSON blob, and a prefixed synthetic id
+     * keeps the two apart without a schema change — the same trick the genre
+     * drill-down already uses for its shared filter. Backup and restore pick it
+     * up for free.
+     */
+    private val filterStorageKey = KomgaLibraryId("__kora_books_filter__${libraryId?.value.orEmpty()}")
+
     @OptIn(FlowPreview::class)
     suspend fun initialize() {
         if (state.value != LoadState.Uninitialized) return
         pageLoadSize.value = settingsRepository.getBookPageLoadSize().first()
+        // Ahead of the first load, because it changes the query. A DB read and
+        // a JSON parse; a stored blob from an older build that no longer parses
+        // is dropped rather than shown as an error.
+        runCatching {
+            librarySeriesFiltersRepository.get(filterStorageKey)
+                ?.let { Json.decodeFromString<LibraryBookFilterDto>(it).toDomain() }
+        }.getOrNull()?.let { filterState.restore(it) }
         load(1)
         // The grid must not wait on the filter panel's referential data: tags
         // and release years are only needed once the panel is opened.
@@ -121,7 +142,15 @@ class LibraryBooksTabState(
             val typing = current.searchTerm != previousSearch && current.searchTerm.isNotBlank()
             previousSearch = current.searchTerm
             if (typing) SEARCH_DEBOUNCE_MS else 0L
-        }.onEach { load(1) }.launchIn(screenModelScope)
+        }.onEach { current ->
+            load(1)
+            runCatching {
+                librarySeriesFiltersRepository.put(
+                    filterStorageKey,
+                    Json.encodeToString(LibraryBookFilterDto.from(current)),
+                )
+            }
+        }.launchIn(screenModelScope)
 
         // One redraw per second at most: a running sync emits an event per
         // batch, and a grid that reloads on each of them spends the sync

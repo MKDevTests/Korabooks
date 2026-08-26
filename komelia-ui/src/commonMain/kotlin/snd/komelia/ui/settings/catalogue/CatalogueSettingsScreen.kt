@@ -60,13 +60,16 @@ class CatalogueSettingsScreen : Screen {
                 // The whole of what is left to gain, and none of it is in this
                 // app. Measured against Calibre-Web on a library of eleven
                 // thousand books: a page of two hundred takes twenty seconds
-                // to build, flat — as long at the start of the index as five
-                // thousand books in — and two asked for at once take forty,
-                // exactly. That is one worker, serving one request at a time,
-                // spending a tenth of a second per book. Sixteen request slots
-                // sit idle against it and no amount of concurrency here can
-                // use them: the walk was made to measure how many the server
-                // will take, and against this one the answer is one.
+                // to build, and two asked for at once take forty, exactly.
+                //
+                // That reads like a server handling one request at a time, and
+                // it was read that way here — until the container turned out
+                // to be capped at six tenths of a CPU, under which *any*
+                // server, however parallel, halves its speed when asked twice.
+                // The cap explains the tenth of a second per book as well. So
+                // the advice names the cap first: it is the one number that
+                // can be wrong by a factor of five, and nothing inside the
+                // container can see it.
                 Surface(
                     color = MaterialTheme.colorScheme.surfaceVariant,
                     shape = RoundedCornerShape(8.dp),
@@ -75,15 +78,15 @@ class CatalogueSettingsScreen : Screen {
                     Text(
                         "Astuce — la durée est celle de Calibre-Web, pas celle de " +
                             "Korabooks : mesuré ici, une page de 200 livres lui prend " +
-                            "20 secondes, et deux pages demandées ensemble lui en " +
-                            "prennent 40. Il répond à une requête à la fois.\n" +
-                            "Deux réglages de votre côté, dans cet ordre : donnez-lui " +
-                            "plusieurs workers (Calibre-Web derrière gunicorn, option " +
-                            "-w) — Korabooks sait alors lire 16 pages en parallèle et " +
-                            "détecte tout seul ce que le serveur encaisse. Puis, dans " +
-                            "Administration → Configuration de l'interface, montez " +
-                            "« Livres par page » au maximum (200) pour réduire le " +
-                            "nombre de requêtes.",
+                            "20 secondes à construire.\n" +
+                            "Regardez d'abord le CPU alloué à son conteneur : " +
+                            "docker inspect calibre-web --format " +
+                            "'{{.HostConfig.NanoCpus}}'. Un milliard vaut un cœur, et " +
+                            "beaucoup d'installations plafonnent bien en dessous sans " +
+                            "le dire — tout le reste en découle. docker update " +
+                            "--cpus=3 calibre-web relève la limite à chaud.\n" +
+                            "Korabooks mesure ensuite tout seul combien de pages le " +
+                            "serveur encaisse en parallèle, jusqu'à seize.",
                         style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.padding(10.dp),
                     )

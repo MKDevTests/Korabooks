@@ -116,6 +116,26 @@ private const val WINDOW_GROWTH_CEILING = 1.25
  */
 private const val LOST_PAGES_BEFORE_STOP = 3
 
+/**
+ * Windows to run at the current width before trying a wider one again.
+ *
+ * A server that answers one request at a time never stops looking like one, so
+ * a window that widens on every healthy result and halves on every slow one
+ * simply alternates — measured against Calibre-Web, one page in twenty-one
+ * seconds and then two in forty-four, over and over. The throughput is the
+ * same either way, but every probe costs a page of latency and makes progress
+ * lurch.
+ *
+ * So a rejected widening backs off, doubling each time. The probe never stops
+ * entirely: a server busy with something else when the walk started is worth
+ * asking again later, and by then the wait between asks is long enough that
+ * being wrong is free.
+ */
+private const val PROBE_BACKOFF = 4
+
+/** Windows between probes, once backing off has gone on long enough. */
+private const val PROBE_BACKOFF_MAX = 64
+
 /** A query parameter holding a plain number — a page offset, if it is one. */
 private val NUMERIC_PARAM = Regex("([?&][A-Za-z_][A-Za-z_0-9]*=)(\\d+)")
 
@@ -188,18 +208,38 @@ class OpdsCatalogueWalker(
     /** What one page costs with nothing else in flight — the thing to beat. */
     private var soloMillis = Long.MAX_VALUE
 
+    /** Windows still to run before the next attempt at a wider one. */
+    private var probeIn = 0
+
+    /** How long the wait will be next time a widening is turned down. */
+    private var probeBackoff = PROBE_BACKOFF
+
     private val paceLock = Mutex()
 
     private suspend fun pace(failed: Boolean, slowestMillis: Long) = paceLock.withLock {
         val was = window
-        window = when {
-            failed -> (window / 2).coerceAtLeast(1)
-            soloMillis == Long.MAX_VALUE -> window
-            slowestMillis > soloMillis * WINDOW_GROWTH_CEILING -> (window / 2).coerceAtLeast(1)
-            else -> (window * 2).coerceAtMost(READ_AHEAD_MAX)
+        val tooSlow = soloMillis != Long.MAX_VALUE &&
+            slowestMillis > soloMillis * WINDOW_GROWTH_CEILING
+        when {
+            failed || tooSlow -> {
+                window = (window / 2).coerceAtLeast(1)
+                probeIn = probeBackoff
+                probeBackoff = (probeBackoff * 2).coerceAtMost(PROBE_BACKOFF_MAX)
+            }
+
+            soloMillis == Long.MAX_VALUE -> Unit
+            probeIn > 0 -> probeIn--
+            else -> {
+                window = (window * 2).coerceAtMost(READ_AHEAD_MAX)
+                // A widening that holds is evidence the last refusal was the
+                // server being busy, not the server being serial: start over.
+                probeBackoff = PROBE_BACKOFF
+            }
         }
         if (window != was) {
-            logger.info { "OPDS reading $window pages at once (was $was, slowest ${slowestMillis} ms of ${soloMillis} alone)" }
+            logger.info {
+                "OPDS reading $window pages at once (was $was, slowest $slowestMillis ms of $soloMillis alone)"
+            }
         }
     }
 

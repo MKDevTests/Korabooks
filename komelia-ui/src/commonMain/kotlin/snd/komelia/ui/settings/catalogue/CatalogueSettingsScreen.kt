@@ -47,7 +47,7 @@ class CatalogueSettingsScreen : Screen {
                 Text(
                     "« Nouveaux tomes » (quelques secondes) ajoute les tomes parus " +
                         "depuis la dernière fois et ne touche pas aux séries.\n" +
-                        "« Tomes + séries » (4-5 min) relit tous les tomes et range " +
+                        "« Tomes + séries » relit tous les tomes et range " +
                         "dans leur série ceux qui ne le sont pas encore. C'est celui " +
                         "à utiliser, y compris pour reprendre une synchro arrêtée.\n" +
                         "« Refaire toutes les séries » (~30 min) rouvre chaque série " +
@@ -57,23 +57,33 @@ class CatalogueSettingsScreen : Screen {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                // The single biggest thing a reader can do about sync time, and
-                // it is not in this app. A catalogue answers one page at a
-                // time, so the whole cost is the number of pages asked for:
-                // measured on a library of ten thousand books, sixty per page
-                // is a hundred and seventy-six requests where two hundred is
-                // fifty-three. Nothing that can be written here comes close.
+                // The whole of what is left to gain, and none of it is in this
+                // app. Measured against Calibre-Web on a library of eleven
+                // thousand books: a page of two hundred takes twenty seconds
+                // to build, flat — as long at the start of the index as five
+                // thousand books in — and two asked for at once take forty,
+                // exactly. That is one worker, serving one request at a time,
+                // spending a tenth of a second per book. Sixteen request slots
+                // sit idle against it and no amount of concurrency here can
+                // use them: the walk was made to measure how many the server
+                // will take, and against this one the answer is one.
                 Surface(
                     color = MaterialTheme.colorScheme.surfaceVariant,
                     shape = RoundedCornerShape(8.dp),
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text(
-                        "Astuce — la synchronisation dépend surtout de Calibre-Web. " +
-                            "Dans Administration → Configuration de l'interface, montez " +
-                            "« Livres par page » au maximum (200). Korabooks demande alors " +
-                            "trois fois moins de pages, et la lecture du catalogue est " +
-                            "d'autant plus rapide.",
+                        "Astuce — la durée est celle de Calibre-Web, pas celle de " +
+                            "Korabooks : mesuré ici, une page de 200 livres lui prend " +
+                            "20 secondes, et deux pages demandées ensemble lui en " +
+                            "prennent 40. Il répond à une requête à la fois.\n" +
+                            "Deux réglages de votre côté, dans cet ordre : donnez-lui " +
+                            "plusieurs workers (Calibre-Web derrière gunicorn, option " +
+                            "-w) — Korabooks sait alors lire 16 pages en parallèle et " +
+                            "détecte tout seul ce que le serveur encaisse. Puis, dans " +
+                            "Administration → Configuration de l'interface, montez " +
+                            "« Livres par page » au maximum (200) pour réduire le " +
+                            "nombre de requêtes.",
                         style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.padding(10.dp),
                     )

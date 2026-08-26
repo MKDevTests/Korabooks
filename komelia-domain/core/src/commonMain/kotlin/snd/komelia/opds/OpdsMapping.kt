@@ -60,15 +60,40 @@ class OpdsMapper(
 ) {
 
     fun map(shelf: OpdsShelf): MappedShelf {
-        val seriesId = seriesId(shelf.title)
+        val standaloneEntry = shelf.entries.firstOrNull().takeIf { shelf.standalone }
+        val seriesId = standaloneEntry?.let { standaloneSeriesId(it) } ?: seriesId(shelf.title)
         val books = shelf.entries.mapIndexedNotNull { index, entry ->
             book(entry, seriesId, shelf, index)
         }
         return MappedShelf(series(shelf, seriesId, books), books)
     }
 
+    /**
+     * The shelf identified by a series name.
+     *
+     * Two books landing on the same shelf because they name the same series is
+     * the point: the volumes of one series are scattered across the catalogue's
+     * pages, and this is what gathers them onto one row.
+     */
     fun seriesId(title: String): KomgaSeriesId =
         KomgaSeriesId(stableId(catalogueId, "series", title))
+
+    /**
+     * The shelf a book with no series gets to itself.
+     *
+     * Identity comes from the book, never from its title. Deriving it from the
+     * title — which is what [seriesId] does, correctly, for a real series —
+     * merged every pair of unrelated books that happened to share a name. On
+     * the reference catalogue that was 134 shelves holding 279 different books:
+     * S. L. Grey's *Underground* and Murakami's became one two-volume series
+     * with both authors, the union of both sets of genres, and one cover for
+     * the two of them. "Rédemption" merged four books by four authors.
+     *
+     * Prefixed rather than hashing the raw id, so a series whose *name* happens
+     * to equal some other book's catalogue id cannot collide with it.
+     */
+    fun standaloneSeriesId(entry: OpdsEntry): KomgaSeriesId =
+        KomgaSeriesId(stableId(catalogueId, "series", "standalone:${entry.id}"))
 
     fun bookId(entry: OpdsEntry): KomgaBookId =
         KomgaBookId(stableId(catalogueId, "book", entry.id))

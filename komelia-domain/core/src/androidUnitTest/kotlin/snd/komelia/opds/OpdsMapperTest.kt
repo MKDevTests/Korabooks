@@ -129,6 +129,43 @@ class OpdsMapperTest {
         assertEquals(once.series.id, twice.series.id)
     }
 
+    /**
+     * Two unrelated books that happen to share a title used to become one
+     * two-volume series, because a standalone shelf was identified by its
+     * title. On the reference catalogue that merged 134 shelves holding 279
+     * different books - S. L. Grey's *Underground* and Murakami's ended up as
+     * one series carrying both authors, the union of both sets of genres, and
+     * a single cover for the two of them.
+     */
+    @Test
+    fun twoStandaloneBooksSharingATitleStaySeparate() {
+        val grey = mapper.map(OpdsShelf("Underground", listOf(entry("b30796", "Underground")), standalone = true))
+        val murakami = mapper.map(OpdsShelf("Underground", listOf(entry("b36012", "Underground")), standalone = true))
+
+        assertNotEquals(
+            grey.series.id,
+            murakami.series.id,
+            "same title, different books: they must not share a shelf",
+        )
+        assertEquals(1, grey.series.booksCount)
+        assertEquals(1, murakami.series.booksCount)
+    }
+
+    /**
+     * The other half of the rule, and the reason the fix is not simply "never
+     * key on the title": the volumes of one series arrive on separate pages of
+     * the catalogue, each as its own shelf, and the series name is what
+     * gathers them onto one row.
+     */
+    @Test
+    fun twoVolumesOfOneSeriesStillLandOnOneShelf() {
+        val first = mapper.map(OpdsShelf("La Horde", listOf(entry("b1", "Tome 1")), standalone = false))
+        val second = mapper.map(OpdsShelf("La Horde", listOf(entry("b2", "Tome 2")), standalone = false))
+
+        assertEquals(first.series.id, second.series.id, "same series name: one shelf")
+        assertNotEquals(first.books.single().id, second.books.single().id)
+    }
+
     @Test
     fun twoCatalogueServersCannotCollide() {
         val elsewhere = OpdsMapper(

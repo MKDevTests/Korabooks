@@ -458,4 +458,51 @@ class OpdsCatalogueWalkerTest {
 
         assertEquals(listOf("Un", "Deux"), books(catalogue).map { it.title })
     }
+
+    /**
+     * A page timing out cost the whole rest of the index: the address of the
+     * page after it was on it. Eleven thousand books came back as six thousand
+     * two hundred, reported as the answer.
+     */
+    @Test
+    fun stepsOverAPageTheServerWillNotGiveUp() = runTest {
+        val catalogue = mapOf(
+            "/opds" to feed(listOf(nav("Auteurs", "/opds/author"))),
+            "/opds/author" to feed(listOf(nav("Anonyme", "/opds/author/1"))),
+            "/opds/author/1" to feed(listOf(book("b1", "Un"), book("b2", "Deux")), next = "/opds/author/1?offset=2"),
+            "/opds/author/1?offset=4" to feed(listOf(book("b5", "Cinq"))),
+        )
+        val walker = OpdsCatalogueWalker(fetch = { url ->
+            if (url == "/opds/author/1?offset=2") error("Socket timeout has expired")
+            catalogue[url] ?: feed(emptyList())
+        })
+
+        val shelves = buildList { walker.walkBooks("/opds") { add(it) } }
+
+        assertEquals(listOf("Un", "Deux", "Cinq"), shelves.map { it.title })
+    }
+
+    /** Three in a row is a server that has stopped answering, not a hiccup. */
+    @Test
+    fun stopsSteppingWhenTheServerHasStoppedAnswering() = runTest {
+        val catalogue = mapOf(
+            "/opds" to feed(listOf(nav("Auteurs", "/opds/author"))),
+            "/opds/author" to feed(listOf(nav("Anonyme", "/opds/author/1"))),
+            "/opds/author/1" to feed(listOf(book("b1", "Un")), next = "/opds/author/1?offset=1"),
+        )
+        var asked = 0
+        val walker = OpdsCatalogueWalker(fetch = { url ->
+            if (url.contains("offset=")) {
+                asked++
+                error("Socket timeout has expired")
+            }
+            catalogue[url] ?: feed(emptyList())
+        })
+
+        val shelves = buildList { walker.walkBooks("/opds") { add(it) } }
+
+        assertEquals(listOf("Un"), shelves.map { it.title })
+        // Three addresses, three tries each, and then it stops.
+        assertEquals(9, asked)
+    }
 }

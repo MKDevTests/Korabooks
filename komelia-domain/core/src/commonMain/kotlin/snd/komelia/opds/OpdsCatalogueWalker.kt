@@ -4,6 +4,7 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
@@ -42,7 +43,26 @@ private const val PAGE_LIMIT = 400
 private const val PEEK_SLICE = 256
 
 /** Tries at a failing address before a walk accepts losing what is behind it. */
-private const val ATTEMPTS = 2
+private const val ATTEMPTS = 3
+
+/**
+ * Waited after a failed try, doubling.
+ *
+ * What this meets is not a refused connection but a server thinking: a
+ * Calibre-Web page deep into an eleven thousand book index is a `LIMIT/OFFSET`
+ * over a sorted query, and it gets slower the further in it goes. Asking again
+ * the same instant asks the same busy server the same expensive question.
+ */
+private const val RETRY_BACKOFF_MS = 2_000L
+
+/**
+ * Pages lost in a row before a walk stops stepping over them.
+ *
+ * One lost page is a server hiccup and the rest of the index is still worth
+ * reading. Three in a row is a server that has stopped answering, and marching
+ * further into it would only add minutes to a walk that has already failed.
+ */
+private const val LOST_PAGES_BEFORE_STOP = 3
 
 /** A query parameter holding a plain number — a page offset, if it is one. */
 private val NUMERIC_PARAM = Regex("([?&][A-Za-z_][A-Za-z_0-9]*=)(\\d+)")
@@ -108,8 +128,9 @@ class OpdsCatalogueWalker(
             val cause = result.exceptionOrNull()
             if (cause is CancellationException) throw cause
             logger.warn { "OPDS fetch failed (${attempt + 1}/$ATTEMPTS) $url: ${cause?.message}" }
+            if (attempt < ATTEMPTS - 1) delay(RETRY_BACKOFF_MS shl attempt)
         }
-        logger.error { "OPDS giving up on $url — the mirror will be missing what was behind it" }
+        logger.error { "OPDS giving up on $url" }
         return null
     }
 
@@ -484,16 +505,60 @@ class OpdsCatalogueWalker(
 
         // Otherwise the catalogue only ever reveals the next address by handing
         // over the current page, and there is nothing to do but ask in turn.
+        //
+        // Which makes one lost page cost the entire rest of the index, because
+        // the address of the page after it was on it. That is how a walk of
+        // eleven thousand books returned six thousand two hundred and reported
+        // it as the answer: one page timed out at offset 6200 and the four
+        // thousand nine hundred books behind it were never asked for.
+        //
+        // So a lost page is stepped over instead. The address after it is the
+        // one that failed with its offset advanced by a page — derived, not
+        // invented: [advancedBy] moves a number that is already in the URL, and
+        // declines rather than guess when there is not exactly one.
         var page = first
         val visited = mutableSetOf(branch.href)
         var count = 1
-        while (count < PAGE_LIMIT) {
-            val next = page.nextPage ?: return
+        var next = page.nextPage
+        var lostInARow = 0
+        while (count < PAGE_LIMIT && next != null) {
             if (!visited.add(next)) return
-            page = fetchOrNull(next) ?: return
+            val fetched = fetchOrNull(next)
+            if (fetched == null) {
+                lostInARow++
+                val pageSize = page.entries.size
+                val after = if (lostInARow < LOST_PAGES_BEFORE_STOP && pageSize > 0) {
+                    next.advancedBy(pageSize)
+                } else null
+                if (after == null) {
+                    logger.error { "OPDS stopping at $next — the mirror will be missing what was behind it" }
+                    return
+                }
+                logger.warn { "OPDS skipping $next — $pageSize books lost, the walk goes on at $after" }
+                next = after
+                continue
+            }
+            lostInARow = 0
+            page = fetched
             block(page)
+            next = page.nextPage
             count++
         }
+    }
+
+    /**
+     * The same address, one page further in.
+     *
+     * Held to the same rule as [pageUrlsAfter]: exactly one numeric query
+     * parameter, or we decline. An offset is the only thing that can safely be
+     * moved, and an address that was invented rather than derived would report
+     * whatever it happened to hit as the catalogue.
+     */
+    private fun String.advancedBy(step: Int): String? {
+        val matches = NUMERIC_PARAM.findAll(this).toList()
+        val only = matches.singleOrNull() ?: return null
+        val value = only.groupValues[2].toIntOrNull() ?: return null
+        return replaceRange(only.groups[2]!!.range, (value + step).toString())
     }
 
     /**

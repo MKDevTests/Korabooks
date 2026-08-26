@@ -290,7 +290,15 @@ class DesktopAppModule(
             install(HttpTimeout) {
                 requestTimeoutMillis = HttpTimeoutConfig.INFINITE_TIMEOUT_MS
                 connectTimeoutMillis = 30_000
-                socketTimeoutMillis = 30_000
+                // Sixty, not thirty, because of one request in particular: a
+                // Calibre-Web index page deep into a large library. It is a
+                // `LIMIT/OFFSET` over a sorted query and it takes longer the
+                // further in it goes — measured past thirty seconds at offset
+                // six thousand of eleven thousand, on a page the reader had
+                // been told to enlarge to two hundred books for speed. This is
+                // the gap between bytes, so it costs nothing on a server that
+                // answers promptly.
+                socketTimeoutMillis = 60_000
             }
         }
 

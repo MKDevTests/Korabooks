@@ -144,14 +144,25 @@ class OpdsMirrorWriter(private val repositories: OfflineRepositories) {
         // Keeping the existing parent costs one query per five hundred books and
         // makes the grouping pass what it always claimed to be: the optional
         // half.
-        val existing: Map<KomgaBookId, KomgaSeriesId> =
-            if (grouped.isEmpty()) emptyMap()
-            else batch.flatMap { shelf -> shelf.books.map { it.id } }
+        // The rows these books already have, when they have one.
+        //
+        // Read unconditionally, where it used to be read only when there were
+        // grouped series to protect: what a re-sync must not overwrite is not
+        // only the book's parent. A downloaded book carries the date and the
+        // path of the file on the device, and the catalogue knows neither — so
+        // rewriting the row from the feed set them back to "no file here", and
+        // a full sync quietly un-downloaded every book the reader had put on
+        // the device. One query per five hundred books, which is what the
+        // parent lookup already cost.
+        val existing: Map<KomgaBookId, OfflineBook> =
+            batch.flatMap { shelf -> shelf.books.map { it.id } }
                 .chunked(IDS_PER_QUERY)
                 .flatMap { repositories.bookRepository.findIn(it) }
-                .associate { it.id to it.seriesId }
+                .associateBy { it.id }
 
-        val parents: Map<KomgaBookId, KomgaSeriesId> = existing.filterValues { it in grouped }
+        val parents: Map<KomgaBookId, KomgaSeriesId> =
+            if (grouped.isEmpty()) emptyMap()
+            else existing.mapValues { it.value.seriesId }.filterValues { it in grouped }
 
         // Shelves being left behind, and where their books went.
         //
@@ -164,7 +175,7 @@ class OpdsMirrorWriter(private val repositories: OfflineRepositories) {
             for (shelf in batch) {
                 for (book in shelf.books) {
                     if (book.id in parents) continue
-                    val from = existing[book.id] ?: continue
+                    val from = existing[book.id]?.seriesId ?: continue
                     if (from != shelf.series.id) put(from, shelf.series.id)
                 }
             }
@@ -178,7 +189,7 @@ class OpdsMirrorWriter(private val repositories: OfflineRepositories) {
             .toSet()
 
         repositories.transactionTemplate.execute {
-            for (mapped in batch) writeShelf(mapped, covers, parents)
+            for (mapped in batch) writeShelf(mapped, covers, parents, existing)
             // After the shelves exist, because a membership points at one.
             repositories.collectionRepository.repointSeries(moved)
             // Book metadata is the heaviest row a book has — a title and a
@@ -370,6 +381,7 @@ class OpdsMirrorWriter(private val repositories: OfflineRepositories) {
         mapped: MappedShelf,
         covers: Map<KomgaBookId, String>,
         parents: Map<KomgaBookId, KomgaSeriesId> = emptyMap(),
+        existing: Map<KomgaBookId, OfflineBook> = emptyMap(),
     ) {
         // Every book here already sits in a series: this shelf is the standalone
         // one the books pass would recreate, and writing it would both resurrect
@@ -379,7 +391,11 @@ class OpdsMirrorWriter(private val repositories: OfflineRepositories) {
 
         for (book in mapped.books) {
             val parent = parents[book.id]
-            writeBook(if (parent != null) book.copy(seriesId = parent) else book, covers[book.id])
+            writeBook(
+                if (parent != null) book.copy(seriesId = parent) else book,
+                covers[book.id],
+                existing[book.id],
+            )
         }
         if (allKept) return
 
@@ -472,7 +488,12 @@ class OpdsMirrorWriter(private val repositories: OfflineRepositories) {
         }
     }
 
-    private suspend fun writeBook(book: KomeliaBook, cover: String?) {
+    private suspend fun writeBook(
+        book: KomeliaBook,
+        cover: String?,
+        /** The row this book already has, whose local file this must not lose. */
+        existing: OfflineBook? = null,
+    ) {
         repositories.bookRepository.save(
             OfflineBook(
                 id = book.id,
@@ -491,10 +512,15 @@ class OpdsMirrorWriter(private val repositories: OfflineRepositories) {
                 remoteFileLastModified = book.fileLastModified,
                 // Epoch zero is what says "no file here yet". The download sets
                 // a real date, and that is what the library reads to tell a
-                // book on the shelf from a book on the server.
-                localFileLastModified = Instant.fromEpochSeconds(0),
+                // book on the shelf from a book on the server — so it is kept
+                // when the book already has one. The catalogue has nothing to
+                // say about a file sitting on the device, and writing what it
+                // does not know over what the device does is how a re-sync
+                // used to leave a downloaded book looking undownloaded.
+                localFileLastModified = existing?.localFileLastModified
+                    ?: Instant.fromEpochSeconds(0),
                 remoteUnavailable = false,
-                fileDownloadPath = PlatformFile(""),
+                fileDownloadPath = existing?.fileDownloadPath ?: PlatformFile(""),
             )
         )
         // Metadata is not written here: write() saves the whole batch of it in

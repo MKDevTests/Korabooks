@@ -205,12 +205,18 @@ fun SeriesFilterContent(
                 modifier = Modifier.width(width),
             )
 
-            // Shown only if the catalogue has any age rating to offer, which a
-            // Calibre-Web mirror never does: the OPDS feed carries no such
+            // Shown only if the catalogue has a real age rating to offer, which
+            // a Calibre-Web mirror never does: the OPDS feed carries no such
             // field and OpdsMapping writes null for every series. Data-driven
             // rather than deleted, so a Komga server that does fill it keeps
             // the control.
-            if (filterState.ageRatingsOptions.isNotEmpty()) {
+            //
+            // "any value other than None", not "list is not empty": the
+            // referential turns a null rating into the string "None", so a
+            // catalogue where nothing is rated answers ["None"] rather than an
+            // empty list — an option that selects everything and narrows
+            // nothing.
+            if (filterState.ageRatingsOptions.any { it != "None" }) {
                 FilterDropdownMultiChoice(
                     selectedOptions = currentFilter.ageRatings.map { stringEntry(it) },
                     options = filterState.ageRatingsOptions.map { stringEntry(it) },

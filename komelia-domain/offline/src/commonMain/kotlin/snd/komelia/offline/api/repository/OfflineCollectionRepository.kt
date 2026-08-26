@@ -15,10 +15,13 @@ import snd.komga.client.series.KomgaSeriesId
  * synchronised. What it holds is series ids, which the mirror keeps stable
  * across a resync — so a collection outlives the catalogue it points into.
  *
- * Every read drops series the mirror no longer has. Nothing enforces the
- * foreign key (SQLite needs `PRAGMA foreign_keys = ON`, which this app never
- * sets), and a collection that claims six series while showing four is worse
- * than one that says four.
+ * Every read drops series the mirror no longer has: a collection that claims
+ * six series while showing four is worse than one that says four. That is a
+ * belt over a brace — the offline database is opened with
+ * `enforceForeignKeys(true)`, so a membership pointing nowhere cannot be
+ * created in the first place; a sync deleting a shelf has to say what becomes
+ * of the collections holding it, which is what [repointSeries] and
+ * [deleteSeriesMemberships] are for.
  *
  * The tables are the ones `V1__offline_mode.sql` already shipped, unused. No
  * migration was needed.
@@ -51,6 +54,29 @@ interface OfflineCollectionRepository {
      * on must not scramble what the reader was already looking at.
      */
     suspend fun save(collection: KomgaCollection)
+
+    /**
+     * Follows a series that changed identity, so the collections holding it do
+     * not lose it.
+     *
+     * A shelf's id is derived, not stored, and a sync that changes how it is
+     * derived moves every book onto a new shelf and leaves the old one to be
+     * pruned. Deleting the membership would be silent curation loss — the
+     * reader put that series in that collection by hand — so it is carried
+     * over to where the books went.
+     *
+     * @param moves old shelf id to the shelf its books moved to
+     */
+    suspend fun repointSeries(moves: Map<KomgaSeriesId, KomgaSeriesId>)
+
+    /**
+     * Drops the memberships of shelves about to be deleted.
+     *
+     * Only for shelves whose books went nowhere — [repointSeries] has already
+     * had its say. Without this the delete fails the foreign key and takes the
+     * end of a twenty-minute sync with it.
+     */
+    suspend fun deleteSeriesMemberships(seriesIds: List<KomgaSeriesId>)
 
     suspend fun delete(collectionId: KomgaCollectionId)
 }

@@ -3,6 +3,7 @@ package snd.komelia.opds
 import io.github.vinceglb.filekit.PlatformFile
 import snd.komelia.komga.api.model.KomeliaBook
 import snd.komelia.offline.OfflineRepositories
+import snd.komelia.offline.readprogress.OfflineReadProgressRepository
 import snd.komelia.offline.book.model.OfflineBook
 import snd.komelia.offline.book.model.OfflineThumbnailBook
 import snd.komelia.offline.book.model.toOfflineBookMetadata
@@ -143,15 +144,31 @@ class OpdsMirrorWriter(private val repositories: OfflineRepositories) {
         // Keeping the existing parent costs one query per five hundred books and
         // makes the grouping pass what it always claimed to be: the optional
         // half.
-        val parents: Map<KomgaBookId, KomgaSeriesId> =
+        val existing: Map<KomgaBookId, KomgaSeriesId> =
             if (grouped.isEmpty()) emptyMap()
             else batch.flatMap { shelf -> shelf.books.map { it.id } }
                 .chunked(IDS_PER_QUERY)
                 .flatMap { repositories.bookRepository.findIn(it) }
-                .mapNotNull { book ->
-                    book.seriesId.takeIf { it in grouped }?.let { book.id to it }
+                .associate { it.id to it.seriesId }
+
+        val parents: Map<KomgaBookId, KomgaSeriesId> = existing.filterValues { it in grouped }
+
+        // Shelves being left behind, and where their books went.
+        //
+        // A book changes shelf whenever the id of the shelf it belongs on
+        // changes, which is what happens the first time a build derives that id
+        // differently. The old shelf empties and prune deletes it — and what
+        // the reader hung on it, a collection membership above all, would go
+        // with it unless it is carried over first.
+        val moved: Map<KomgaSeriesId, KomgaSeriesId> = buildMap {
+            for (shelf in batch) {
+                for (book in shelf.books) {
+                    if (book.id in parents) continue
+                    val from = existing[book.id] ?: continue
+                    if (from != shelf.series.id) put(from, shelf.series.id)
                 }
-                .toMap()
+            }
+        }
 
         // Shelves nobody wrote, so the caller does not count them as library and
         // does not ask prune to spare something that is not there.
@@ -162,6 +179,8 @@ class OpdsMirrorWriter(private val repositories: OfflineRepositories) {
 
         repositories.transactionTemplate.execute {
             for (mapped in batch) writeShelf(mapped, covers, parents)
+            // After the shelves exist, because a membership points at one.
+            repositories.collectionRepository.repointSeries(moved)
             // Book metadata is the heaviest row a book has — a title and a
             // number, plus authors, tags and links in three tables of their
             // own. Written per book that is seven statements each; hoisted out
@@ -216,6 +235,27 @@ class OpdsMirrorWriter(private val repositories: OfflineRepositories) {
         }
         return counts
     }
+
+    /**
+     * The shelves holding several books that are not a series at all.
+     *
+     * A standalone shelf is written for one book and marked a oneshot; a series
+     * shelf never is. So a oneshot holding more than one book is a shelf two
+     * unrelated books were merged onto, and nothing else can be.
+     *
+     * It matters because such a shelf is indistinguishable, by book count
+     * alone, from a properly grouped series — and [write] uses exactly that
+     * count to decide which books to leave where they are. Left in, a merge
+     * would defend itself against every sync meant to undo it.
+     */
+    suspend fun mergedShelves(
+        libraryId: KomgaLibraryId,
+        counts: Map<KomgaSeriesId, Int>,
+    ): Set<KomgaSeriesId> =
+        repositories.seriesRepository.findAllByLibraryId(libraryId)
+            .filter { it.oneshot && (counts[it.id] ?: 0) > 1 }
+            .map { it.id }
+            .toSet()
 
     /**
      * Settles what a shelf can only know once all its volumes are in: how many
@@ -530,6 +570,17 @@ class OpdsMirrorWriter(private val repositories: OfflineRepositories) {
         deleteSeries(stale)
     }
 
+    /**
+     * Redoes the per-shelf read counts from the per-book progress.
+     *
+     * See [OfflineReadProgressRepository.rebuildSeriesAggregates]: nothing
+     * maintains those counts when a book changes shelf, and a sync moves books
+     * between shelves by the thousand.
+     */
+    suspend fun rebuildReadProgressAggregates() {
+        repositories.readProgressRepository.rebuildSeriesAggregates()
+    }
+
     /** Shelves of [libraryId] that hold no book at all. */
     private suspend fun emptySeriesOf(libraryId: KomgaLibraryId): List<KomgaSeriesId> {
         val all = repositories.seriesRepository.findAllByLibraryId(libraryId).map { it.id }
@@ -553,9 +604,21 @@ class OpdsMirrorWriter(private val repositories: OfflineRepositories) {
     private suspend fun deleteSeries(ids: List<KomgaSeriesId>) {
         ids.chunked(IDS_PER_QUERY).forEach { slice ->
             repositories.transactionTemplate.execute {
-                // The cover row first: it points at the series, and a shelf
-                // emptied by the grouping pass keeps the thumbnail it borrowed
-                // from the book that left.
+                // Everything that hangs off a shelf, before the shelf.
+                //
+                // The offline database enforces its foreign keys, so this list
+                // being short of one table is not a leak, it is a crash: the
+                // delete fails, and with it the last statement of a sync that
+                // spent twenty minutes getting everything else right. Two of
+                // them were missing, and both are rows only a reader who
+                // actually uses the app has — a series' read counts, and a
+                // collection membership — so the sync failed for exactly the
+                // people who had read something or curated anything.
+                repositories.readProgressRepository.deleteBySeriesIds(slice)
+                repositories.collectionRepository.deleteSeriesMemberships(slice)
+                // The cover row: it points at the series, and a shelf emptied
+                // by the grouping pass keeps the thumbnail it borrowed from the
+                // book that left.
                 repositories.thumbnailSeriesRepository.deleteBySeriesIds(slice)
                 repositories.seriesMetadataRepository.delete(slice)
                 repositories.bookMetadataAggregationRepository.delete(slice)

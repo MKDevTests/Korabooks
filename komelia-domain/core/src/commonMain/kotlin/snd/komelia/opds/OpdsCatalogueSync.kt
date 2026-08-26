@@ -210,9 +210,16 @@ class OpdsCatalogueSync(
         // how many books there were (so the grouping pass can be skipped when
         // the catalogue has not moved).
         val before = writer.seriesBookCounts(libraryId)
-        val grouped = before.filterValues { it > 1 }.keys
+        // Minus the shelves that hold two books because two books were merged
+        // onto them. Those look grouped and are not, and sparing them would
+        // make this sync preserve the very thing it is here to undo.
+        val merged = writer.mergedShelves(libraryId, before)
+        val grouped = before.filterValues { it > 1 }.keys - merged
         val booksBefore = before.values.sum()
         logger.info { "OPDS mirror holds $booksBefore books in ${before.size} shelves, ${grouped.size} grouped" }
+        if (merged.isNotEmpty()) {
+            logger.info { "OPDS ${merged.size} shelves are merged homonyms — their books will be split back out" }
+        }
 
         // Buffered, because a transaction costs far more than the seven inserts
         // a shelf needs. One at a time the phone wrote twenty-five books a
@@ -417,8 +424,14 @@ class OpdsCatalogueSync(
         // were real a minute ago, which is why they are found by being empty
         // rather than by being predicted.
         val emptied = writer.pruneEmptySeries(libraryId)
-        // Last, because it describes what the pruning leaves behind.
+        // Last, because they describe what the pruning leaves behind.
         val recounted = writer.refreshSeriesAggregates(libraryId)
+        // A book that changed shelf took its read progress with it — the
+        // progress is the book's — but not the counts the *shelf* publishes,
+        // which nothing recomputes on a move. Redone wholesale here, so a
+        // series the reader finished is not reported unread by the sync that
+        // regrouped it.
+        writer.rebuildReadProgressAggregates()
         if (unreadable > 0) {
             logger.warn { "OPDS $unreadable books skipped: no format this app can open" }
         }

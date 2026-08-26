@@ -2,6 +2,7 @@ package snd.komelia.db.offline
 
 import org.jetbrains.exposed.v1.core.IntegerColumnType
 import org.jetbrains.exposed.v1.core.JoinType
+import org.jetbrains.exposed.v1.core.Op
 import org.jetbrains.exposed.v1.core.ResultRow
 import org.jetbrains.exposed.v1.core.Sum
 import org.jetbrains.exposed.v1.core.and
@@ -14,6 +15,7 @@ import org.jetbrains.exposed.v1.core.intLiteral
 import org.jetbrains.exposed.v1.core.max
 import org.jetbrains.exposed.v1.jdbc.Database
 import org.jetbrains.exposed.v1.jdbc.batchUpsert
+import org.jetbrains.exposed.v1.jdbc.deleteAll
 import org.jetbrains.exposed.v1.jdbc.deleteWhere
 import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.select
@@ -183,6 +185,13 @@ class ExposedOfflineReadProgressRepository(
         }
     }
 
+    override suspend fun rebuildSeriesAggregates() {
+        transaction {
+            seriesProgressTable.deleteAll()
+            seriesProgressTable.insert(seriesProgressSelect(where = null))
+        }
+    }
+
     override suspend fun deleteBySeriesIds(seriesIds: List<KomgaSeriesId>) {
         transaction {
             seriesProgressTable.deleteWhere {
@@ -235,36 +244,44 @@ class ExposedOfflineReadProgressRepository(
         }
 
         seriesProgressTable.insert(
-            bookTable.join(
-                otherTable = progressTable,
-                joinType = JoinType.INNER,
-                onColumn = bookTable.id,
-                otherColumn = progressTable.bookId
-            ).select(
-                bookTable.seriesId,
-                progressTable.userId,
-                Sum(
-                    expr = case()
-                        .When(progressTable.completed.eq(true), intLiteral(1))
-                        .Else(0),
-                    columnType = IntegerColumnType()
-                ),
-                Sum(
-                    expr = case()
-                        .When(progressTable.completed.eq(false), intLiteral(1))
-                        .Else(0),
-                    columnType = IntegerColumnType()
-                ),
-                progressTable.readDate.max(),
-            ).where {
+            seriesProgressSelect(
                 bookTable.seriesId.inList(seriesIds)
                     .andIfNotNull(userId?.value?.let { progressTable.userId.eq(it) })
-            }.groupBy(
-                bookTable.seriesId,
-                progressTable.userId
             )
         )
     }
+
+    /**
+     * The counts a shelf has, read straight out of the books it holds.
+     *
+     * Shared so that a rebuild and a one-book update cannot drift: they are the
+     * same aggregate over the same join, differing only in how much of it they
+     * ask for.
+     */
+    private fun seriesProgressSelect(where: Op<Boolean>?) =
+        bookTable.join(
+            otherTable = progressTable,
+            joinType = JoinType.INNER,
+            onColumn = bookTable.id,
+            otherColumn = progressTable.bookId
+        ).select(
+            bookTable.seriesId,
+            progressTable.userId,
+            Sum(
+                expr = case()
+                    .When(progressTable.completed.eq(true), intLiteral(1))
+                    .Else(0),
+                columnType = IntegerColumnType()
+            ),
+            Sum(
+                expr = case()
+                    .When(progressTable.completed.eq(false), intLiteral(1))
+                    .Else(0),
+                columnType = IntegerColumnType()
+            ),
+            progressTable.readDate.max(),
+        ).let { query -> if (where == null) query else query.where(where) }
+            .groupBy(bookTable.seriesId, progressTable.userId)
 
     private fun ResultRow.toModel(): OfflineReadProgress {
         return OfflineReadProgress(

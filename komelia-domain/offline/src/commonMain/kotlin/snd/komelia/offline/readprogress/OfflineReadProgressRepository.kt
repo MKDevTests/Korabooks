@@ -34,6 +34,21 @@ interface OfflineReadProgressRepository {
         userId: KomgaUserId,
     )
 
+    /**
+     * Recomputes the per-series read counts from the per-book progress.
+     *
+     * READ_PROGRESS_SERIES is derived data — how many books of a shelf are
+     * read, how many are in progress, when it was last touched — and it is
+     * maintained one book at a time, whenever progress is saved. Nothing
+     * maintains it when a *book changes shelf*, which a catalogue sync does by
+     * the thousand: the old shelf keeps counts for books it no longer holds,
+     * the new one has none, and a series the reader finished shows as unread.
+     *
+     * Cheap enough to simply redo: the source is one row per book actually
+     * read, not one per book in the library.
+     */
+    suspend fun rebuildSeriesAggregates()
+
     suspend fun deleteBySeriesIds(seriesIds: List<KomgaSeriesId>)
     suspend fun deleteByBookIds(bookIds: List<KomgaBookId>)
 

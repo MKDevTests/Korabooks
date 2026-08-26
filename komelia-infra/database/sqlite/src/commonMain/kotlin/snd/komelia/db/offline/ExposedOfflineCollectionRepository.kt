@@ -10,6 +10,7 @@ import org.jetbrains.exposed.v1.jdbc.batchInsert
 import org.jetbrains.exposed.v1.jdbc.deleteWhere
 import org.jetbrains.exposed.v1.jdbc.select
 import org.jetbrains.exposed.v1.jdbc.selectAll
+import org.jetbrains.exposed.v1.jdbc.update
 import org.jetbrains.exposed.v1.jdbc.upsert
 import snd.komelia.db.ExposedRepository
 import snd.komelia.db.offline.tables.OfflineCollectionSeriesTable
@@ -27,10 +28,11 @@ import kotlin.time.Instant
 /**
  * Collections read back through a join on SERIES, always.
  *
- * COLLECTION_SERIES declares its foreign keys, but SQLite only enforces them
- * under `PRAGMA foreign_keys = ON`, which this app never sets — so a catalogue
- * resync that drops a series leaves membership rows pointing nowhere. Every read
- * here goes through [members], which joins and therefore forgets them.
+ * COLLECTION_SERIES declares its foreign keys and the offline database enforces
+ * them, so a membership can never point at a missing series. Every read here
+ * still goes through [members], which joins: the guarantee belongs to the
+ * schema, and a read that depends on it holding is a read that breaks the day
+ * it stops.
  *
  * Filtering and sorting happen in Kotlin rather than in SQL, on purpose. These
  * are the reader's hand-made collections — tens of rows, not thousands — and
@@ -121,6 +123,35 @@ class ExposedOfflineCollectionRepository(database: Database) :
                 this[collectionSeriesTable.collectionId] = collection.id.value
                 this[collectionSeriesTable.seriesId] = seriesId.value
                 this[collectionSeriesTable.number] = index
+            }
+        }
+    }
+
+    override suspend fun repointSeries(moves: Map<KomgaSeriesId, KomgaSeriesId>) {
+        if (moves.isEmpty()) return
+        transaction {
+            // Only the memberships that exist, one statement each. A sync moves
+            // thousands of shelves and the reader has tens of collection rows,
+            // so the loop is over what is held, never over what moved.
+            val held = collectionSeriesTable
+                .select(collectionSeriesTable.seriesId)
+                .where { collectionSeriesTable.seriesId.inList(moves.keys.map { it.value }) }
+                .map { it[collectionSeriesTable.seriesId] }
+                .distinct()
+            for (from in held) {
+                val to = moves.getValue(KomgaSeriesId(from))
+                collectionSeriesTable.update({ collectionSeriesTable.seriesId.eq(from) }) {
+                    it[collectionSeriesTable.seriesId] = to.value
+                }
+            }
+        }
+    }
+
+    override suspend fun deleteSeriesMemberships(seriesIds: List<KomgaSeriesId>) {
+        if (seriesIds.isEmpty()) return
+        transaction {
+            collectionSeriesTable.deleteWhere {
+                collectionSeriesTable.seriesId.inList(seriesIds.map { it.value })
             }
         }
     }

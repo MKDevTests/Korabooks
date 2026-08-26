@@ -27,6 +27,27 @@ import snd.komga.client.search.BookConditionBuilder
 import snd.komga.client.search.KomgaSearchCondition
 
 /**
+ * Every criterion that is currently narrowing the grid, in the order they are
+ * shown. Empty when the filter is untouched, which is what hides the chips row.
+ *
+ * [LibraryBookFilter.authorScope] and [LibraryBookFilter.authors] both surface
+ * as plain author chips: they are two ways into the same question, and the
+ * reader has no use for the distinction. Removing one is handled accordingly.
+ */
+fun LibraryBookFilter.activeFilters(): List<ActiveFilter> = buildList {
+    if (searchTerm.isNotBlank()) add(ActiveFilter(ActiveFilter.Kind.SEARCH, searchTerm))
+    letterFilter?.let { add(ActiveFilter(ActiveFilter.Kind.LETTER, it)) }
+    authorScope?.let { add(ActiveFilter(ActiveFilter.Kind.AUTHOR, it)) }
+    authors.map { it.name }.distinct()
+        .filterNot { it == authorScope }
+        .forEach { add(ActiveFilter(ActiveFilter.Kind.AUTHOR, it)) }
+    includeTags.forEach { add(ActiveFilter(ActiveFilter.Kind.TAG, it)) }
+    excludeTags.forEach { add(ActiveFilter(ActiveFilter.Kind.TAG_EXCLUDED, it)) }
+    releaseDates.forEach { add(ActiveFilter(ActiveFilter.Kind.RELEASE_DATE, it)) }
+    readStatus.forEach { add(ActiveFilter(ActiveFilter.Kind.READ_STATUS, it.name)) }
+}
+
+/**
  * Everything the Books tab asks the server for, as one value.
  *
  * The series tab has had a filter panel since Komelia; the books tab had a
@@ -317,6 +338,50 @@ class LibraryBookFilterState(
 
     fun resetAuthors() {
         mutableFilterState.update { it.copy(authors = emptyList()) }
+        checkIfAllDefault()
+    }
+
+    /**
+     * Drops the single criterion [filter] and leaves the rest alone.
+     *
+     * Not routed through the `onXSelect` toggles the filter panel uses: [onTagSelect]
+     * is tri-state (include -> exclude -> off), so asking it to remove an included
+     * tag would silently *exclude* it instead. [onAuthorSelect] is worse — it reads
+     * `authorsOptions`, which is only populated once the panel has composed, so from
+     * a chip it would do nothing at all.
+     *
+     * An author chip can stand for either the Authors-tab scope or a panel
+     * selection, so removal clears the value wherever it sits.
+     */
+    fun remove(filter: ActiveFilter) {
+        mutableFilterState.update { c ->
+            when (filter.kind) {
+                ActiveFilter.Kind.SEARCH -> c.copy(searchTerm = DEFAULT.searchTerm)
+                ActiveFilter.Kind.LETTER -> c.copy(letterFilter = DEFAULT.letterFilter)
+                ActiveFilter.Kind.AUTHOR -> c.copy(
+                    authorScope = c.authorScope?.takeIf { it != filter.value },
+                    authors = c.authors.filterNot { it.name == filter.value },
+                )
+
+                ActiveFilter.Kind.TAG -> c.copy(includeTags = c.includeTags - filter.value)
+                ActiveFilter.Kind.TAG_EXCLUDED -> c.copy(excludeTags = c.excludeTags - filter.value)
+                ActiveFilter.Kind.RELEASE_DATE -> c.copy(releaseDates = c.releaseDates - filter.value)
+                ActiveFilter.Kind.READ_STATUS ->
+                    c.copy(readStatus = c.readStatus.filterNot { it.name == filter.value })
+
+                // Kinds the books grid cannot carry: no genre, publisher,
+                // language, age rating, publication status, completion or
+                // one-shot condition exists on a book. Nothing to drop.
+                ActiveFilter.Kind.GENRE,
+                ActiveFilter.Kind.GENRE_EXCLUDED,
+                ActiveFilter.Kind.PUBLISHER,
+                ActiveFilter.Kind.LANGUAGE,
+                ActiveFilter.Kind.AGE_RATING,
+                ActiveFilter.Kind.PUBLICATION_STATUS,
+                ActiveFilter.Kind.COMPLETION,
+                ActiveFilter.Kind.FORMAT -> c
+            }
+        }
         checkIfAllDefault()
     }
 

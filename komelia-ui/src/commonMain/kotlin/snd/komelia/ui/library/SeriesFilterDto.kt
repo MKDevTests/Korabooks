@@ -34,8 +34,18 @@ data class SeriesFilterDto(
     val oneshot: SeriesFilterState.Format = SeriesFilterState.Format.ANY,
     val letterFilter: String? = null,
 ) {
+    /**
+     * [SeriesFilter.isChanged] is left at its default and NOT forced to true.
+     *
+     * Forcing it broke the only "a filter is active" signal in the app.
+     * `SeriesFilterState.checkIfAllDefault` decides that flag by comparing the
+     * whole filter to DEFAULT, and DEFAULT carries `isChanged = false` — so a
+     * restored filter with the field hardcoded to true was never equal to
+     * DEFAULT, whatever it actually contained. Once any filter had been saved
+     * for a library, its filter icon stayed lit for good, including after the
+     * user had cleared everything.
+     */
     fun toDomain(): SeriesFilter = SeriesFilter(
-        isChanged = true,
         searchTerm = searchTerm,
         sortOrder = sortOrder,
         readStatus = readStatus,

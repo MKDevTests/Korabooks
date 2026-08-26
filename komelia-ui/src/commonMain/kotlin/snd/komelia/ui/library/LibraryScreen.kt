@@ -38,7 +38,6 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.filled.Close
 import snd.komelia.ui.common.components.Pagination
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.width
@@ -157,6 +156,7 @@ import snd.komelia.ui.common.cards.BookImageCard
 import snd.komelia.ui.common.cards.defaultCardWidth
 import snd.komelia.ui.common.itemlist.BookLazyCardGrid
 import snd.komelia.ui.common.menus.BookMenuActions
+import snd.komelia.ui.series.activeFilters
 import snd.komelia.ui.series.list.SeriesListContent
 import snd.komelia.ui.series.seriesScreen
 import snd.komelia.komga.api.model.KomeliaBook
@@ -308,7 +308,14 @@ class LibraryScreen(
                         )
                     }
 
-                    val showContinueReading = vm.showContinueReading.collectAsState().value
+                    // "Reprendre la lecture" ignores the filter — it is the
+                    // library's in-progress books, whole. On a screen opened from
+                    // an author chip that reads as a contradiction: the grid holds
+                    // the one series by that author, and right above it sits a
+                    // shelf of unrelated books. The toggle goes too, so it cannot
+                    // offer to bring the contradiction back.
+                    val showContinueReading =
+                        seriesFilter == null && vm.showContinueReading.collectAsState().value
                     val newUI2BeforeContent = @Composable {
                         val gridPadding = if (useNewUI2) 10.dp else 20.dp
                         val density = LocalDensity.current
@@ -346,6 +353,7 @@ class LibraryScreen(
                                     readListsCount = vm.readListsCount,
                                     genresCount = vm.genresCount,
                                     showContinueReading = showContinueReading,
+                                    showReadingChip = seriesFilter == null,
                                     onReadingClick = vm::toggleContinueReading,
                                     onBrowseClick = vm::toBrowseTab,
                                     onBooksClick = vm::toBooksTab,
@@ -519,6 +527,14 @@ class LibraryScreen(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp),
                 )
+                // Above the letters rather than below: these say what the grid
+                // already is, the letters offer to narrow it further.
+                ActiveFilterChipsRow(
+                    filters = seriesFilterValue.activeFilters(),
+                    onRemove = seriesTabState.filterState::remove,
+                    onClearAll = seriesTabState.filterState::reset,
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                )
                 LetterFilterBar(
                     selected = currentLetter,
                     onLetterClick = seriesTabState.filterState::onLetterFilterChange,
@@ -598,27 +614,21 @@ class LibraryScreen(
             else -> Box(Modifier.fillMaxSize()) {
                 Column(Modifier.fillMaxSize()) {
                     beforeContent()
-                    // Shown only when the grid is answering about one person: the
-                    // chip is both the explanation for a short list and the way out
-                    // of it.
-                    filter.authorScope?.let { author ->
-                        FilterChip(
-                            selected = true,
-                            onClick = { booksTabState.onAuthorFilterChange(null) },
-                            label = { Text("Auteur : $author") },
-                            trailingIcon = { Icon(Icons.Default.Close, contentDescription = null) },
-                            shape = AppFilterChipDefaults.shape(),
-                            colors = AppFilterChipDefaults.filterChipColors(),
-                            border = AppFilterChipDefaults.filterChipBorder(true),
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                        )
-                    }
                     OutlinedTextField(
                         value = filter.searchTerm,
                         onValueChange = filterState::onSearchTermChange,
                         label = { Text(LocalStrings.current.ui.search) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp),
+                    )
+                    // Names every active criterion, the author scope from the
+                    // Authors tab included — that one used to have a chip of its
+                    // own here, saying "Auteur : X" and nothing about the rest.
+                    ActiveFilterChipsRow(
+                        filters = filter.activeFilters(),
+                        onRemove = filterState::remove,
+                        onClearAll = filterState::reset,
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                     )
                     LetterFilterBar(
                         selected = filter.letterFilter,
@@ -650,11 +660,9 @@ class LibraryScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        if (filter.narrowsResults) {
-                            TextButton(onClick = filterState::reset) {
-                                Text(LocalStrings.current.ui.clearAll)
-                            }
-                        }
+                        // No "clear all" button here any more: the chips row above
+                        // carries one of its own past two criteria, and with a
+                        // single chip its own cross already clears everything.
                         Spacer(Modifier.weight(1f))
                         Text(
                             "${booksTabState.totalBooksCount} livres",
@@ -1264,6 +1272,9 @@ private fun LibraryTabChips(
     readListsCount: Int,
     genresCount: Int = 0,
     showContinueReading: Boolean,
+    // False on a chip-scoped library, where the shelf this toggles is not
+    // filtered and would contradict the grid below it.
+    showReadingChip: Boolean = true,
     onReadingClick: () -> Unit,
     onBrowseClick: () -> Unit,
     onBooksClick: () -> Unit = {},
@@ -1378,15 +1389,17 @@ private fun LibraryTabChips(
             }
         }
 
-        item {
-            FilterChip(
-                selected = showContinueReading,
-                onClick = onReadingClick,
-                label = { Text(LocalStrings.current.ui.reading) },
-                colors = chipColors,
-                shape = AppFilterChipDefaults.shape(),
-                border = AppFilterChipDefaults.filterChipBorder(showContinueReading),
-            )
+        if (showReadingChip) {
+            item {
+                FilterChip(
+                    selected = showContinueReading,
+                    onClick = onReadingClick,
+                    label = { Text(LocalStrings.current.ui.reading) },
+                    colors = chipColors,
+                    shape = AppFilterChipDefaults.shape(),
+                    border = AppFilterChipDefaults.filterChipBorder(showContinueReading),
+                )
+            }
         }
 
 

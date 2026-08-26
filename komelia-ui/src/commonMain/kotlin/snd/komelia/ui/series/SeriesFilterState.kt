@@ -18,6 +18,7 @@ import kotlinx.datetime.until
 import snd.komelia.AppNotifications
 import snd.komelia.hidden.HIDDEN_TAG
 import snd.komelia.komga.api.KomgaReferentialApi
+import snd.komelia.ui.library.ActiveFilter
 import snd.komelia.ui.library.LibrarySeriesTabState.SeriesSort
 import snd.komelia.ui.library.SeriesScreenFilter
 import snd.komelia.ui.platform.ScreenSerializable
@@ -32,6 +33,36 @@ import snd.komga.client.library.KomgaLibrary
 import snd.komga.client.search.KomgaSearchCondition
 import snd.komga.client.search.SeriesConditionBuilder
 import snd.komga.client.series.KomgaSeriesStatus
+
+/**
+ * Every criterion that is currently narrowing the list, in the order they are
+ * shown. Empty when the filter is untouched, which is what hides the chips row.
+ *
+ * Authors are collapsed by name: selecting one author actually selects every
+ * role they hold on the series (writer, penciller…), and three chips saying the
+ * same name would be noise.
+ */
+fun SeriesFilter.activeFilters(): List<ActiveFilter> = buildList {
+    if (searchTerm.isNotBlank()) add(ActiveFilter(ActiveFilter.Kind.SEARCH, searchTerm))
+    letterFilter?.let { add(ActiveFilter(ActiveFilter.Kind.LETTER, it)) }
+    authors.map { it.name }.distinct().forEach { add(ActiveFilter(ActiveFilter.Kind.AUTHOR, it)) }
+    includeGenres.forEach { add(ActiveFilter(ActiveFilter.Kind.GENRE, it)) }
+    excludeGenres.forEach { add(ActiveFilter(ActiveFilter.Kind.GENRE_EXCLUDED, it)) }
+    includeTags.forEach { add(ActiveFilter(ActiveFilter.Kind.TAG, it)) }
+    excludeTags.forEach { add(ActiveFilter(ActiveFilter.Kind.TAG_EXCLUDED, it)) }
+    publishers.forEach { add(ActiveFilter(ActiveFilter.Kind.PUBLISHER, it)) }
+    languages.forEach { add(ActiveFilter(ActiveFilter.Kind.LANGUAGE, it)) }
+    // Age rating and publication status have no dropdown any more — a
+    // Calibre-Web mirror never fills either. A series page can still open the
+    // library filtered on them, so these two chips are the only way to see and
+    // drop such a filter.
+    ageRatings.forEach { add(ActiveFilter(ActiveFilter.Kind.AGE_RATING, it)) }
+    releaseDates.forEach { add(ActiveFilter(ActiveFilter.Kind.RELEASE_DATE, it)) }
+    readStatus.forEach { add(ActiveFilter(ActiveFilter.Kind.READ_STATUS, it.name)) }
+    publicationStatus.forEach { add(ActiveFilter(ActiveFilter.Kind.PUBLICATION_STATUS, it.name)) }
+    if (complete != DEFAULT.complete) add(ActiveFilter(ActiveFilter.Kind.COMPLETION, complete.name))
+    if (oneshot != DEFAULT.oneshot) add(ActiveFilter(ActiveFilter.Kind.FORMAT, oneshot.name))
+}
 
 data class SeriesFilter(
     val isChanged: Boolean = false,
@@ -430,6 +461,43 @@ class SeriesFilterState(
                     Format.NOT_ONESHOT -> Format.ANY
                 }
             )
+        }
+        checkIfAllDefault()
+    }
+
+    /**
+     * Drops the single criterion [filter] and leaves the rest alone.
+     *
+     * Not routed through the `onXSelect` toggles the filter panel uses: those
+     * are tri-state for genres and tags (include -> exclude -> off), so asking
+     * one of them to remove an included tag would silently *exclude* it
+     * instead. [onAuthorSelect] is worse — it reads `authorsOptions`, which is
+     * only populated once the filter panel has composed, so from a chip it
+     * would do nothing at all.
+     */
+    fun remove(filter: ActiveFilter) {
+        mutableFilterState.update { c ->
+            when (filter.kind) {
+                ActiveFilter.Kind.SEARCH -> c.copy(searchTerm = DEFAULT.searchTerm)
+                ActiveFilter.Kind.LETTER -> c.copy(letterFilter = DEFAULT.letterFilter)
+                ActiveFilter.Kind.AUTHOR -> c.copy(authors = c.authors.filterNot { it.name == filter.value })
+                ActiveFilter.Kind.GENRE -> c.copy(includeGenres = c.includeGenres - filter.value)
+                ActiveFilter.Kind.GENRE_EXCLUDED -> c.copy(excludeGenres = c.excludeGenres - filter.value)
+                ActiveFilter.Kind.TAG -> c.copy(includeTags = c.includeTags - filter.value)
+                ActiveFilter.Kind.TAG_EXCLUDED -> c.copy(excludeTags = c.excludeTags - filter.value)
+                ActiveFilter.Kind.PUBLISHER -> c.copy(publishers = c.publishers - filter.value)
+                ActiveFilter.Kind.LANGUAGE -> c.copy(languages = c.languages - filter.value)
+                ActiveFilter.Kind.AGE_RATING -> c.copy(ageRatings = c.ageRatings - filter.value)
+                ActiveFilter.Kind.RELEASE_DATE -> c.copy(releaseDates = c.releaseDates - filter.value)
+                ActiveFilter.Kind.READ_STATUS ->
+                    c.copy(readStatus = c.readStatus.filterNot { it.name == filter.value })
+
+                ActiveFilter.Kind.PUBLICATION_STATUS ->
+                    c.copy(publicationStatus = c.publicationStatus.filterNot { it.name == filter.value })
+
+                ActiveFilter.Kind.COMPLETION -> c.copy(complete = DEFAULT.complete)
+                ActiveFilter.Kind.FORMAT -> c.copy(oneshot = DEFAULT.oneshot)
+            }
         }
         checkIfAllDefault()
     }

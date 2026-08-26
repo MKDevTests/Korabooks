@@ -220,11 +220,34 @@ class LibrarySeriesTabState(
         appNotifications = notifications,
     )
 
+    /**
+     * True when this screen exists only to show one criterion — the library
+     * opened from an author, a tag, a publisher or a publication-status chip.
+     *
+     * Such a view is transient and must not write either of the library's two
+     * persisted states, both of which are keyed by library id alone:
+     *
+     *  - the grid snapshot. One tap on an author would replace the library's
+     *    cached first page, its `filterSignature` going from a sort order to
+     *    that author. The next cold open then finds a snapshot it has to
+     *    reject and paints nothing, so the grid sits empty for the whole
+     *    round-trip where it is normally instant.
+     *  - the saved filter. Touching the sort or a letter here would write the
+     *    author into the library's own remembered filter, and the library
+     *    would come back filtered on the next launch, silently.
+     *
+     * Giving these views their own cache key was the alternative. It would
+     * spend a file per author explored to make a screen fast that is opened
+     * once and left.
+     */
+    private var screenFilterApplied = false
+
     private val reloadEventsEnabled = MutableStateFlow(true)
     private val reloadJobsFlow = MutableSharedFlow<Unit>(1, 0, BufferOverflow.DROP_OLDEST)
 
     fun initialize(filter: SeriesScreenFilter? = null) {
         if (state.value !is LoadState.Uninitialized) return
+        screenFilterApplied = filter != null
 
         screenModelScope.launch {
             // Restore the persisted per-library filter unless an explicit filter
@@ -283,8 +306,13 @@ class LibrarySeriesTabState(
             }.onEach { current ->
                 loadSeriesPage(1)
                 // Persist user-modified filters: per library normally, or under the
-                // shared genre key when this is a genre drill-down.
-                val storageKey = if (baseTagFilter != null) GENRE_FILTER_STORAGE_KEY else libraryId
+                // shared genre key when this is a genre drill-down. Never from a
+                // chip-scoped view — see screenFilterApplied.
+                val storageKey = when {
+                    screenFilterApplied -> null
+                    baseTagFilter != null -> GENRE_FILTER_STORAGE_KEY
+                    else -> libraryId
+                }
                 storageKey?.let { key ->
                     runCatching {
                         val json = kotlinx.serialization.json.Json.encodeToString(SeriesFilterDto.from(current))
@@ -460,6 +488,7 @@ class LibrarySeriesTabState(
     /** Snapshot the first page so a return to this library/genre paints instantly. */
     private fun cacheFirstPage(page: Int) {
         if (page != 1) return
+        if (screenFilterApplied) return
         val key = seriesCacheKey ?: return
         val snapshot = LibrarySeriesPageCache.Snapshot(
             series = series,

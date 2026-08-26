@@ -161,10 +161,22 @@ class OpdsCatalogueSync(
             onProgress = { onProgress(OpdsSyncProgress.Walking(added, it.books, it.current)) },
         ) { page ->
             currentCoroutineContext().ensureActive()
-            // One shelf per book, exactly as the first pass writes them: a
-            // newly added book has no series until a full sync says otherwise.
+            // One shelf per book, exactly as the books pass writes them —
+            // including the grouping, when the catalogue names the series.
+            //
+            // It used to always write the standalone shelf and leave grouping
+            // to a full sync, which on this catalogue is twenty minutes of a
+            // server that renders two hundred books in twenty seconds and
+            // renders them one request at a time. So every book added between
+            // two full syncs sat outside its series, and the only way to put
+            // it back was to re-read eleven thousand books to find the four
+            // that moved. The series name is on the entry: the quick sync can
+            // read it as cheaply as the slow one, and mostly removes the
+            // reason to run the slow one at all.
             val shelves = page.entries.map { entry ->
-                mapper.map(OpdsShelf(entry.title, listOf(entry), standalone = true))
+                val series = entry.seriesName
+                if (series != null) mapper.map(OpdsShelf(series, listOf(entry), standalone = false))
+                else mapper.map(OpdsShelf(entry.title, listOf(entry), standalone = true))
             }.filter { it.books.isNotEmpty() }
 
             val unknown = shelves.filter { !writer.hasBook(it.books.first().id) }
@@ -183,7 +195,14 @@ class OpdsCatalogueSync(
             unknown.isEmpty()
         }
 
-        logger.info { "OPDS quick sync done: $added new books" }
+        // A book joining a series rewrites that series' row from the one entry
+        // it arrived on — one book, one book's tags. Harmless in a full sync,
+        // which recounts everything at the end; this one has to ask for it, and
+        // only when something actually landed. Reads the mirror, asks the
+        // server nothing, and takes a second where the walk took twenty.
+        val recounted = if (added > 0) writer.refreshSeriesAggregates(libraryId) else 0
+
+        logger.info { "OPDS quick sync done: $added new books, $recounted counts corrected" }
         return OpdsSyncResult(libraryId, touched.size, added, covers)
     }
 

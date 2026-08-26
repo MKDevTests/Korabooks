@@ -1,6 +1,7 @@
 package snd.komelia.opds
 
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.yield
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -464,38 +465,53 @@ class OpdsCatalogueWalkerTest {
     /**
      * A page timing out cost the whole rest of the index: the address of the
      * page after it was on it. Eleven thousand books came back as six thousand
-     * two hundred, reported as the answer.
+     * two hundred, reported as the answer. Once the pattern is confirmed the
+     * address after a lost page no longer depends on it.
      */
     @Test
     fun stepsOverAPageTheServerWillNotGiveUp() = runTest {
         val catalogue = mapOf(
             "/opds" to feed(listOf(nav("Auteurs", "/opds/author"))),
             "/opds/author" to feed(listOf(nav("Anonyme", "/opds/author/1"))),
-            "/opds/author/1" to feed(listOf(book("b1", "Un"), book("b2", "Deux")), next = "/opds/author/1?offset=2"),
-            "/opds/author/1?offset=4" to feed(listOf(book("b5", "Cinq"))),
+            "/opds/author/1" to feed(
+                listOf(book("b1", "Un"), book("b2", "Deux")),
+                next = "/opds/author/1?offset=2",
+            ),
+            "/opds/author/1?offset=2" to feed(
+                listOf(book("b3", "Trois"), book("b4", "Quatre")),
+                next = "/opds/author/1?offset=4",
+            ),
+            "/opds/author/1?offset=6" to feed(listOf(book("b7", "Sept"))),
         )
         val walker = OpdsCatalogueWalker(fetch = { url ->
-            if (url == "/opds/author/1?offset=2") error("Socket timeout has expired")
+            if (url == "/opds/author/1?offset=4") error("Socket timeout has expired")
             catalogue[url] ?: feed(emptyList())
         })
 
-        val shelves = buildList { walker.walkBooks("/opds") { add(it) } }
+        val shelves = mutableListOf<OpdsShelf>()
+        val walk = walker.walkBooks("/opds") { shelves += it }
 
-        assertEquals(listOf("Un", "Deux", "Cinq"), shelves.map { it.title })
+        assertEquals(listOf("Un", "Deux", "Trois", "Quatre", "Sept"), shelves.map { it.title })
+        assertEquals(1, walk.lostPages, "the page is lost, the ones behind it are not")
     }
 
-    /** Three in a row is a server that has stopped answering, not a hiccup. */
+    /** A whole window with nothing in it is a server that has stopped. */
     @Test
-    fun stopsSteppingWhenTheServerHasStoppedAnswering() = runTest {
+    fun stopsWhenAWholeWindowComesBackEmpty() = runTest {
         val catalogue = mapOf(
             "/opds" to feed(listOf(nav("Auteurs", "/opds/author"))),
             "/opds/author" to feed(listOf(nav("Anonyme", "/opds/author/1"))),
-            "/opds/author/1" to feed(listOf(book("b1", "Un")), next = "/opds/author/1?offset=1"),
+            "/opds/author/1" to feed(
+                listOf(book("b1", "Un"), book("b2", "Deux")),
+                next = "/opds/author/1?offset=2",
+            ),
+            "/opds/author/1?offset=2" to feed(
+                listOf(book("b3", "Trois"), book("b4", "Quatre")),
+                next = "/opds/author/1?offset=4",
+            ),
         )
-        var asked = 0
         val walker = OpdsCatalogueWalker(fetch = { url ->
-            if (url.contains("offset=")) {
-                asked++
+            if (url.contains("offset=") && url != "/opds/author/1?offset=2") {
                 error("Socket timeout has expired")
             }
             catalogue[url] ?: feed(emptyList())
@@ -504,11 +520,10 @@ class OpdsCatalogueWalkerTest {
         val shelves = mutableListOf<OpdsShelf>()
         val walk = walker.walkBooks("/opds") { shelves += it }
 
-        assertEquals(listOf("Un"), shelves.map { it.title })
-        // Three addresses, three tries each, and then it stops — then asks for
-        // the three once more, with the walk over and nothing else in flight.
-        assertEquals(18, asked)
-        assertEquals(3, walk.lostPages, "and says so, rather than reporting one book as the catalogue")
+        assertEquals(listOf("Un", "Deux", "Trois", "Quatre"), shelves.map { it.title })
+        // One window of sixteen addresses, and then it stops rather than
+        // reading four hundred pages ahead into a server that is not there.
+        assertEquals(16, walk.lostPages, "and says so, rather than reporting four books as the catalogue")
     }
 
     /**
@@ -537,5 +552,71 @@ class OpdsCatalogueWalkerTest {
 
         assertEquals(null, walk.expected)
         assertEquals(0, walk.lostPages)
+    }
+
+    /**
+     * The fix for a twenty minute sync: a page of two hundred books took
+     * twenty-one seconds and fifty-six of them were asked for one at a time,
+     * with fifteen of the sixteen request slots idle. Two pages confirm the
+     * address pattern; everything after them is asked for together.
+     */
+    @Test
+    fun asksForDerivablePagesTogether() = runTest {
+        val catalogue = mapOf(
+            "/opds" to feed(listOf(nav("Auteurs", "/opds/author"))),
+            "/opds/author" to feed(listOf(nav("Anonyme", "/opds/author/1"))),
+            "/opds/author/1" to feed(
+                listOf(book("b1", "Un"), book("b2", "Deux")),
+                next = "/opds/author/1?offset=2",
+            ),
+            "/opds/author/1?offset=2" to feed(
+                listOf(book("b3", "Trois"), book("b4", "Quatre")),
+                next = "/opds/author/1?offset=4",
+            ),
+            "/opds/author/1?offset=4" to feed(listOf(book("b5", "Cinq"))),
+        )
+        var inFlight = 0
+        var peak = 0
+        val walker = OpdsCatalogueWalker(fetch = { url ->
+            inFlight++
+            peak = maxOf(peak, inFlight)
+            yield()
+            inFlight--
+            catalogue[url] ?: feed(emptyList())
+        })
+
+        val shelves = mutableListOf<OpdsShelf>()
+        walker.walkBooks("/opds") { shelves += it }
+
+        assertEquals(listOf("Un", "Deux", "Trois", "Quatre", "Cinq"), shelves.map { it.title })
+        assertTrue(peak > 1, "the pages after the second were asked for together, not in turn")
+    }
+
+    /**
+     * `?page=2` is not an offset. Advancing it by a page size would ask for
+     * page two hundred and two and call what came back the catalogue.
+     */
+    @Test
+    fun refusesToDeriveAddressesFromAPageNumber() = runTest {
+        val catalogue = mapOf(
+            "/opds" to feed(listOf(nav("Auteurs", "/opds/author"))),
+            "/opds/author" to feed(listOf(nav("Anonyme", "/opds/author/1"))),
+            "/opds/author/1" to feed(
+                listOf(book("b1", "Un"), book("b2", "Deux")),
+                next = "/opds/author/1?page=2",
+            ),
+            "/opds/author/1?page=2" to feed(listOf(book("b3", "Trois"))),
+        )
+        val asked = mutableListOf<String>()
+        val walker = OpdsCatalogueWalker(fetch = { url ->
+            asked += url
+            catalogue[url] ?: feed(emptyList())
+        })
+
+        val shelves = mutableListOf<OpdsShelf>()
+        walker.walkBooks("/opds") { shelves += it }
+
+        assertEquals(listOf("Un", "Deux", "Trois"), shelves.map { it.title })
+        assertTrue(asked.none { it.contains("page=4") }, "no page number was multiplied: $asked")
     }
 }

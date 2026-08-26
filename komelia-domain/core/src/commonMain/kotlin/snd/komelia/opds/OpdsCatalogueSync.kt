@@ -11,6 +11,7 @@ import snd.komga.client.book.KomgaBookId
 import snd.komga.client.sse.KomgaEvent
 import snd.komga.client.library.KomgaLibraryId
 import snd.komga.client.series.KomgaSeriesId
+import kotlin.time.TimeSource
 
 private val logger = KotlinLogging.logger { }
 
@@ -213,17 +214,26 @@ class OpdsCatalogueSync(
     ): OpdsSyncResult {
         val libraryId = writer.library(catalogueUrl, catalogueName)
         val mapper = OpdsMapper(libraryId = libraryId, catalogueId = catalogueUrl)
-        // Logged per request: when a sync looks stuck, the only useful question
-        // is whether it is still asking the server for things, and logcat can
-        // answer it without a screen.
+        // Logged per request, with what it cost: when a sync looks stuck, the
+        // only useful questions are whether it is still asking the server for
+        // things and whether the server is what it is waiting for. Twenty-one
+        // seconds between two pages says nothing on its own — the walk also
+        // waits on the writing queue behind it — and the two are told apart
+        // only by timing the fetch itself.
+        var fetchMillis = 0L
         val walker = OpdsCatalogueWalker(fetch = { url ->
-            logger.info { "OPDS fetch $url" }
-            client.feed(url)
+            val started = TimeSource.Monotonic.markNow()
+            val feed = client.feed(url)
+            val took = started.elapsedNow()
+            fetchMillis += took.inWholeMilliseconds
+            logger.info { "OPDS fetch $url — ${took.inWholeMilliseconds} ms, ${feed.entries.size} entries" }
+            feed
         })
 
         val kept = mutableSetOf<KomgaSeriesId>()
         var books = 0
         var covers = 0
+        var writeMillis = 0L
 
         // What the mirror holds before we touch it, read in one pass. Two things
         // come out of it and both decide how long this sync takes: which series
@@ -255,7 +265,9 @@ class OpdsCatalogueSync(
             // never written this pass, and prune only spares what it is told.
             // The standalone shelves that were deliberately not created are the
             // one thing not claimed — they do not exist to be spared.
+            val startedWrite = TimeSource.Monotonic.markNow()
             val written = writer.write(pending, pendingCovers, grouped)
+            writeMillis += startedWrite.elapsedNow().inWholeMilliseconds
             kept += written.preserved
             kept += pending.map { it.series.id } - written.skipped
             books += pending.sumOf { it.books.size }
@@ -471,6 +483,11 @@ class OpdsCatalogueSync(
             "OPDS sync done: ${result.shelves} shelves, $books books, " +
                 "$recounted counts corrected, $unreadable unreadable"
         }
+        // The one number that decides what to make faster next. A walk that
+        // spends its time in the network is a walk to parallelise; one that
+        // spends it in SQLite is not, and no amount of concurrency upstream
+        // would move it.
+        logger.info { "OPDS time: ${fetchMillis / 1000}s asking the server, ${writeMillis / 1000}s writing" }
         // Loud, and returned, because the failure this guards against is the
         // quiet one: every earlier truncated run ended by announcing its own
         // short count as the catalogue.

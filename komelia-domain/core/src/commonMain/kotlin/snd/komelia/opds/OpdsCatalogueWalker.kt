@@ -10,6 +10,7 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import kotlin.coroutines.cancellation.CancellationException
+import kotlin.time.TimeSource
 
 private val logger = KotlinLogging.logger { }
 
@@ -80,13 +81,40 @@ private const val ATTEMPTS = 3
 private const val RETRY_BACKOFF_MS = 2_000L
 
 /**
- * Addresses of one feed asked for at once, when they can be derived.
+ * The most addresses of one feed asked for at once.
  *
- * The same as [PARALLELISM], because the gate underneath is what actually
- * rations them: a larger window would only queue up behind it, holding built
- * pages in memory while it waited.
+ * A ceiling, not a setting: [OpdsCatalogueWalker.window] starts at one and only
+ * climbs while the server keeps answering as fast as it did alone. Capped at
+ * [PARALLELISM] because the gate underneath is what actually rations requests —
+ * a larger window would queue up behind it, holding built pages in memory.
  */
-private const val READ_AHEAD = PARALLELISM
+private const val READ_AHEAD_MAX = PARALLELISM
+
+/**
+ * How much slower than alone a page may come back before the window shrinks.
+ *
+ * A server that handles requests one at a time returns two concurrent pages in
+ * twice the time and gains nothing: same throughput, twice the latency, and at
+ * sixteen deep every request is past its socket timeout — which is worse than
+ * nothing, because the work is thrown away and asked for again. Measured on
+ * Calibre-Web: a page of two hundred books takes twenty-two seconds alone, and
+ * sixteen at once do not fit in sixty.
+ *
+ * A quarter over is noise. Anything more and the requests are queueing behind
+ * each other rather than running beside each other.
+ */
+private const val WINDOW_GROWTH_CEILING = 1.25
+
+/**
+ * Pages lost in a row before a walk stops reading ahead into the gap.
+ *
+ * One lost page is a hiccup and the rest of the index is still worth reading —
+ * that is the whole point of deriving the addresses rather than reading them
+ * off the page that never arrived. Three in a row is a server that has stopped
+ * answering, and marching four hundred addresses further into it would only add
+ * minutes to a walk that has already failed.
+ */
+private const val LOST_PAGES_BEFORE_STOP = 3
 
 /** A query parameter holding a plain number — a page offset, if it is one. */
 private val NUMERIC_PARAM = Regex("([?&][A-Za-z_][A-Za-z_0-9]*=)(\\d+)")
@@ -144,6 +172,37 @@ class OpdsCatalogueWalker(
     private val lost = mutableSetOf<String>()
     private val lostLock = Mutex()
 
+    /**
+     * Addresses asked for at once, found by asking.
+     *
+     * Servers differ by an order of magnitude in what they will take, and
+     * nothing in a feed says which kind is on the other end. Komga answers
+     * sixteen concurrent pages in about the time it answers one; Calibre-Web
+     * answers them one after another and times the rest out. So the window is
+     * measured rather than configured: it starts at one, doubles while pages
+     * keep coming back at close to their solo speed, and halves the moment they
+     * do not.
+     */
+    private var window = 1
+
+    /** What one page costs with nothing else in flight — the thing to beat. */
+    private var soloMillis = Long.MAX_VALUE
+
+    private val paceLock = Mutex()
+
+    private suspend fun pace(failed: Boolean, slowestMillis: Long) = paceLock.withLock {
+        val was = window
+        window = when {
+            failed -> (window / 2).coerceAtLeast(1)
+            soloMillis == Long.MAX_VALUE -> window
+            slowestMillis > soloMillis * WINDOW_GROWTH_CEILING -> (window / 2).coerceAtLeast(1)
+            else -> (window * 2).coerceAtMost(READ_AHEAD_MAX)
+        }
+        if (window != was) {
+            logger.info { "OPDS reading $window pages at once (was $was, slowest ${slowestMillis} ms of ${soloMillis} alone)" }
+        }
+    }
+
     private suspend fun takeLost(): Set<String> = lostLock.withLock {
         val taken = lost.toSet()
         lost.clear()
@@ -161,6 +220,13 @@ class OpdsCatalogueWalker(
      * refusing a connection, and logged always, because a walk that quietly
      * returns less than the catalogue holds is worse than one that fails.
      */
+    /** [fetchOrNull], with what the whole of it cost — retries included. */
+    private suspend fun fetchTimed(url: String): Pair<OpdsFeed?, Long> {
+        val started = TimeSource.Monotonic.markNow()
+        val feed = fetchOrNull(url)
+        return feed to started.elapsedNow().inWholeMilliseconds
+    }
+
     private suspend fun fetchOrNull(url: String): OpdsFeed? {
         repeat(ATTEMPTS) { attempt ->
             val result = runCatching { fetchLimited(url) }
@@ -604,7 +670,10 @@ class OpdsCatalogueWalker(
         while (read < PAGE_LIMIT && next != null) {
             if (!visited.add(next)) return
             val predicted = next.advancedBy(pageSize)
-            val fetched = fetchOrNull(next)
+            val (fetched, millis) = fetchTimed(next)
+            // Asked for on its own, so this is what one page costs with the
+            // server to itself: the yardstick the window is judged against.
+            if (fetched != null) paceLock.withLock { soloMillis = minOf(soloMillis, millis) }
             if (fetched == null) {
                 logger.error { "OPDS stopping at $next — the mirror will be missing what was behind it" }
                 return
@@ -624,23 +693,32 @@ class OpdsCatalogueWalker(
         // Reading past the end is what marks the end: a page shorter than the
         // first is the last one, and an address beyond it answers with nothing.
         var ahead: String? = readAheadFrom
+        var lostInARow = 0
         while (ahead != null && read < PAGE_LIMIT) {
-            val window = buildList {
+            val room = paceLock.withLock { window }
+            val batchUrls = buildList {
                 var url: String? = ahead
-                while (size < READ_AHEAD && read + size < PAGE_LIMIT && url != null && visited.add(url)) {
+                while (size < room && read + size < PAGE_LIMIT && url != null && visited.add(url)) {
                     add(url)
                     url = url.advancedBy(pageSize)
                 }
             }
-            if (window.isEmpty()) return
-            val pages = coroutineScope { window.map { url -> async { fetchOrNull(url) } }.awaitAll() }
-            var answered = false
-            for (fetched in pages) {
+            if (batchUrls.isEmpty()) return
+            val results = coroutineScope {
+                batchUrls.map { url -> async { fetchTimed(url) } }.awaitAll()
+            }
+            // Judged before the pages are handed on, so the next window is
+            // already the right size whatever the caller does with these.
+            pace(failed = results.any { it.first == null }, slowestMillis = results.maxOf { it.second })
+            for ((fetched, _) in results) {
                 // A lost page no longer breaks the chain: the addresses after
                 // it were derived, not read off it. It is already recorded for
                 // the second pass.
-                if (fetched == null) continue
-                answered = true
+                if (fetched == null) {
+                    lostInARow++
+                    continue
+                }
+                lostInARow = 0
                 // Nothing on it means the window asked past the end, which is
                 // how the end is found without a total. Not handed on: an empty
                 // page is not a page of the catalogue.
@@ -649,14 +727,13 @@ class OpdsCatalogueWalker(
                 read++
                 if (fetched.entries.size < pageSize) return
             }
-            // Sixteen addresses and not one answer is a server that has
-            // stopped, not a hiccup. Reading ahead into it would ask four
-            // hundred more addresses of a machine that is not listening.
-            if (!answered) {
-                logger.error { "OPDS stopping at ${window.first()} — none of ${window.size} pages answered" }
+            if (lostInARow >= LOST_PAGES_BEFORE_STOP) {
+                logger.error {
+                    "OPDS stopping at ${batchUrls.last()} — $lostInARow pages in a row unanswered"
+                }
                 return
             }
-            ahead = window.last().advancedBy(pageSize)
+            ahead = batchUrls.last().advancedBy(pageSize)
         }
     }
 

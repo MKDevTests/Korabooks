@@ -495,9 +495,9 @@ class OpdsCatalogueWalkerTest {
         assertEquals(1, walk.lostPages, "the page is lost, the ones behind it are not")
     }
 
-    /** A whole window with nothing in it is a server that has stopped. */
+    /** Three lost in a row is a server that has stopped, not a hiccup. */
     @Test
-    fun stopsWhenAWholeWindowComesBackEmpty() = runTest {
+    fun stopsWhenTheServerHasStoppedAnswering() = runTest {
         val catalogue = mapOf(
             "/opds" to feed(listOf(nav("Auteurs", "/opds/author"))),
             "/opds/author" to feed(listOf(nav("Anonyme", "/opds/author/1"))),
@@ -521,9 +521,9 @@ class OpdsCatalogueWalkerTest {
         val walk = walker.walkBooks("/opds") { shelves += it }
 
         assertEquals(listOf("Un", "Deux", "Trois", "Quatre"), shelves.map { it.title })
-        // One window of sixteen addresses, and then it stops rather than
-        // reading four hundred pages ahead into a server that is not there.
-        assertEquals(16, walk.lostPages, "and says so, rather than reporting four books as the catalogue")
+        // Three addresses, and then it stops rather than reading four hundred
+        // pages ahead into a server that is not there.
+        assertEquals(3, walk.lostPages, "and says so, rather than reporting four books as the catalogue")
     }
 
     /**
@@ -573,7 +573,15 @@ class OpdsCatalogueWalkerTest {
                 listOf(book("b3", "Trois"), book("b4", "Quatre")),
                 next = "/opds/author/1?offset=4",
             ),
-            "/opds/author/1?offset=4" to feed(listOf(book("b5", "Cinq"))),
+            "/opds/author/1?offset=4" to feed(
+                listOf(book("b5", "Cinq"), book("b6", "Six")),
+                next = "/opds/author/1?offset=6",
+            ),
+            "/opds/author/1?offset=6" to feed(
+                listOf(book("b7", "Sept"), book("b8", "Huit")),
+                next = "/opds/author/1?offset=8",
+            ),
+            "/opds/author/1?offset=8" to feed(listOf(book("b9", "Neuf"))),
         )
         var inFlight = 0
         var peak = 0
@@ -588,8 +596,11 @@ class OpdsCatalogueWalkerTest {
         val shelves = mutableListOf<OpdsShelf>()
         walker.walkBooks("/opds") { shelves += it }
 
-        assertEquals(listOf("Un", "Deux", "Trois", "Quatre", "Cinq"), shelves.map { it.title })
-        assertTrue(peak > 1, "the pages after the second were asked for together, not in turn")
+        assertEquals(
+            listOf("Un", "Deux", "Trois", "Quatre", "Cinq", "Six", "Sept", "Huit", "Neuf"),
+            shelves.map { it.title },
+        )
+        assertTrue(peak > 1, "the window widened once the server kept up: peak was $peak")
     }
 
     /**

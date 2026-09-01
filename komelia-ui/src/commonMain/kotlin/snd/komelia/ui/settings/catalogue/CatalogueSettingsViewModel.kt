@@ -89,6 +89,18 @@ class CatalogueSettingsViewModel(
                                 "Catalogue lu en partie : ${result.lostPages} pages d'index " +
                                     "perdues. Relancez la synchronisation."
 
+                            // Last of the four, and the only one that can be a
+                            // false alarm: deleting books in Calibre shrinks
+                            // the mirror legitimately. Worded as a question
+                            // rather than a verdict, and it names the number so
+                            // the reader can tell curation from truncation at a
+                            // glance. It comes after the three certainties.
+                            result.shrank ->
+                                "La bibliothèque est passée de ${result.booksBefore} à " +
+                                    "${result.books} livres en une synchronisation. " +
+                                    "Si vous n'avez pas supprimé ces ${result.lost} livres " +
+                                    "dans Calibre, relancez la synchronisation."
+
                             else -> null
                         }
                     }

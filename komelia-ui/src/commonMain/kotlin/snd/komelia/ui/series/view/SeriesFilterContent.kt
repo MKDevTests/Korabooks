@@ -182,12 +182,19 @@ fun SeriesFilterContent(
                 onClearAll = { filterState.resetAuthors() }
             )
 
-            FilterDropdownMultiChoice(
+            // The same control as the authors above, for the same reason: a
+            // dropdown that composes one row per option cannot open on a
+            // catalogue with 1 135 publishers. The search dialog narrows before
+            // it composes, and shows what is already selected as chips, so a
+            // choice stays visible even when the search no longer matches it.
+            FilterDialogMultiChoiceWithSearch(
                 selectedOptions = currentFilter.publishers.map { stringEntry(it) },
                 options = filterState.publishersOptions.map { stringEntry(it) },
                 onOptionSelect = { changed -> filterState.onPublisherSelect(changed.value) },
+                onSearch = filterState::onPublishersSearch,
                 label = strings.publisher,
                 modifier = Modifier.width(width),
+                onClearAll = { filterState.resetPublishers() },
             )
 
             FilterDropdownMultiChoice(

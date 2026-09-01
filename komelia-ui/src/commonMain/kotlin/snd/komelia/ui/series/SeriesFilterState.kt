@@ -211,6 +211,15 @@ data class SeriesFilter(
     }
 }
 
+/**
+ * How many publisher rows the choice dialog is allowed to compose at once.
+ *
+ * Not a page size — there is no paging here. It is the ceiling that keeps a
+ * non-lazy scrolling Column from being handed 1 135 children, which is what
+ * stopped the dialog from opening at all.
+ */
+private const val PUBLISHERS_SHOWN = 100
+
 class SeriesFilterState(
     defaultSort: SeriesSort,
     private val library: StateFlow<KomgaLibrary?>,
@@ -233,8 +242,21 @@ class SeriesFilterState(
         private set
     var ageRatingsOptions by mutableStateOf<List<String>>(emptyList())
         private set
+    /**
+     * The publishers the dialog shows, which is not all of them.
+     *
+     * The reference catalogue has 1 135 distinct publishers and the choice
+     * dialog composes a row per option inside a plain scrolling Column, not a
+     * lazy list. At that count the dialog stopped appearing at all. Authors hit
+     * the same wall and were solved server-side — `getAuthors` takes a search
+     * term — but `getPublishers` takes none, so the narrowing happens here,
+     * over a list already in memory. No round trip per keystroke.
+     */
     var publishersOptions by mutableStateOf<List<String>>(emptyList())
         private set
+
+    /** Every publisher, kept whole so [onPublishersSearch] has something to search. */
+    private var allPublishers: List<String> = emptyList()
     var languagesOptions by mutableStateOf<List<String>>(emptyList())
         private set
 
@@ -260,7 +282,8 @@ class SeriesFilterState(
                 tagOptions = tags.await().filterNot { it == HIDDEN_TAG }
                 releaseDateOptions = releaseDates.await()
                 ageRatingsOptions = ageRatings.await()
-                publishersOptions = publishers.await()
+                allPublishers = publishers.await()
+                publishersOptions = allPublishers.take(PUBLISHERS_SHOWN)
                 languagesOptions = languages.await()
             }
         }
@@ -372,6 +395,21 @@ class SeriesFilterState(
     fun onExclusionModeChange(mode: TagExclusionMode) {
         mutableFilterState.update { current -> current.copy(exclusionMode = mode) }
         checkIfAllDefault()
+    }
+
+    /**
+     * Narrows [publishersOptions] to what matches, capped.
+     *
+     * Blank search shows the first [PUBLISHERS_SHOWN] rather than nothing: a
+     * dialog that opens empty reads as broken, and on a small catalogue the cap
+     * never bites at all.
+     */
+    fun onPublishersSearch(search: String) {
+        publishersOptions =
+            if (search.isBlank()) allPublishers.take(PUBLISHERS_SHOWN)
+            else allPublishers
+                .filter { it.contains(search, ignoreCase = true) }
+                .take(PUBLISHERS_SHOWN)
     }
 
     suspend fun onAuthorsSearch(search: String) {
@@ -523,6 +561,11 @@ class SeriesFilterState(
 
     fun resetAuthors() {
         mutableFilterState.update { it.copy(authors = emptyList()) }
+        checkIfAllDefault()
+    }
+
+    fun resetPublishers() {
+        mutableFilterState.update { it.copy(publishers = emptyList()) }
         checkIfAllDefault()
     }
 

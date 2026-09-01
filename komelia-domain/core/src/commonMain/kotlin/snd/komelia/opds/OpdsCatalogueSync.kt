@@ -65,6 +65,19 @@ data class OpdsSyncResult(
      * should be zero is only useful if somebody looks at it.
      */
     val downloadsLost: Int = 0,
+    /**
+     * Books the mirror held when this sync started.
+     *
+     * The catalogue's own count would be the honest reference, and [expectedBooks]
+     * is it — but Calibre-Web publishes no `totalResults`, so on the reference
+     * server that field is null on every run and the check it feeds never
+     * fires. What the mirror held last time is the reference that is always
+     * available, and it is the one that would have caught the run that read
+     * 6 196 of 11 000 books and announced the short count as the library.
+     *
+     * Zero on a first sync, which legitimately starts from nothing.
+     */
+    val booksBefore: Int = 0,
 ) {
     /**
      * Whether the catalogue was read whole.
@@ -74,11 +87,29 @@ data class OpdsSyncResult(
      * thousand books in the same words a six thousand book library would.
      */
     val complete: Boolean
-        get() = lostPages == 0 && downloadsLost == 0 &&
+        get() = lostPages == 0 && downloadsLost == 0 && !shrank &&
             (expectedBooks == null || books >= expectedBooks)
 
     /** Books the catalogue announced and the walk never saw. */
     val missing: Int get() = expectedBooks?.let { (it - books).coerceAtLeast(0) } ?: 0
+
+    /** Books the mirror held before and does not hold now. Negative means it grew. */
+    val lost: Int get() = booksBefore - books
+
+    /**
+     * Whether the library shrank by more than deleting books would explain.
+     *
+     * A catalogue does lose books — the reader deletes some in Calibre — so any
+     * drop at all would cry wolf. Truncation looks nothing like curation: the
+     * unit of loss is an index page, two hundred books at a time, and the run
+     * that started this check dropped 44 % in one go. One percent sits far
+     * above ordinary deletions and far below a lost page on any library big
+     * enough for a page to matter.
+     *
+     * False on a first sync: there is nothing to have shrunk from.
+     */
+    val shrank: Boolean
+        get() = booksBefore > 0 && lost > booksBefore / 100
 }
 
 /** Where the sync is, for a screen that shows it. */
@@ -525,6 +556,7 @@ class OpdsCatalogueSync(
             expectedBooks = walk.expected,
             lostPages = walk.lostPages,
             downloadsLost = (downloadedBefore - downloadedAfter).coerceAtLeast(0),
+            booksBefore = booksBefore,
         )
         logger.info {
             "OPDS sync done: ${result.shelves} shelves, $books books, " +
@@ -538,6 +570,13 @@ class OpdsCatalogueSync(
         // Loud, and returned, because the failure this guards against is the
         // quiet one: every earlier truncated run ended by announcing its own
         // short count as the catalogue.
+        if (result.shrank) {
+            logger.error {
+                "OPDS sync SHRANK: the mirror held $booksBefore books and now holds ${result.books}, " +
+                    "${result.lost} gone in one run — deleting that many in Calibre would be " +
+                    "deliberate, losing them to a truncated walk would not"
+            }
+        }
         if (!result.complete) {
             logger.error {
                 "OPDS sync INCOMPLETE: ${result.missing} of ${walk.expected} books never read, " +

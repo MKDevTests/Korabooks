@@ -242,9 +242,14 @@ class EpubView(
             go(finalProps.locator!!)
         }
 
+        // Only touch the overlay when the read-aloud state actually changes.
+        // finalizeProps() runs on every page turn and every settings change, and
+        // the old unconditional else fired a coroutine + an applyDecorations()
+        // hop across the JS bridge each time to clear a highlight that was never
+        // there — nothing drives isPlaying since the audio player was removed.
         if (finalProps.isPlaying && finalProps.locator != null) {
             highlightFragment(finalProps.locator!!)
-        } else {
+        } else if (oldProps?.isPlaying == true) {
             clearHighlightFragment()
         }
 

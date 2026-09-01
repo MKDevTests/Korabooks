@@ -61,7 +61,6 @@ import snd.komelia.settings.model.ReaderFlashColor
 import snd.komelia.settings.model.ReaderType
 import snd.komelia.settings.model.ReaderType.CONTINUOUS
 import snd.komelia.settings.model.ReaderType.PAGED
-import snd.komelia.settings.model.ReaderType.PANELS
 import snd.komelia.ui.LocalPlatform
 import snd.komelia.ui.LocalStrings
 import snd.komelia.ui.common.components.DropdownChoiceMenu
@@ -72,12 +71,6 @@ import snd.komelia.ui.platform.PlatformType
 import snd.komelia.ui.platform.cursorForHand
 import snd.komelia.ui.reader.image.continuous.ContinuousReaderState
 import snd.komelia.ui.reader.image.paged.PagedReaderState
-import snd.komelia.ui.reader.image.panels.PanelsReaderState
-import snd.komelia.ui.settings.imagereader.onnxruntime.DeviceSelector
-import snd.komelia.ui.settings.imagereader.onnxruntime.OnnxRuntimeSettingsState
-import snd.komelia.ui.settings.imagereader.onnxruntime.TileSizeSelector
-import snd.komelia.ui.settings.imagereader.onnxruntime.UpscaleModeSelector
-import snd.komelia.ui.settings.imagereader.onnxruntime.isOnnxRuntimeInstalled
 import kotlin.math.roundToInt
 
 @Composable
@@ -100,8 +93,6 @@ fun SettingsSideMenuOverlay(
     onStretchToFitChange: (Boolean) -> Unit,
     cropBorders: Boolean,
     onCropBordersChange: (Boolean) -> Unit,
-    invertSpeechBubbles: Boolean,
-    onInvertSpeechBubblesChange: (Boolean) -> Unit,
     webtoonSmartScroll: Boolean,
     onWebtoonSmartScrollChange: (Boolean) -> Unit,
     loadThumbnailPreviews: Boolean,
@@ -123,9 +114,7 @@ fun SettingsSideMenuOverlay(
     onTapNavigationModeChange: (ReaderTapNavigationMode) -> Unit,
 
     pagedReaderState: PagedReaderState,
-    panelsReaderState: PanelsReaderState?,
     continuousReaderState: ContinuousReaderState,
-    onnxRuntimeSettingsState: OnnxRuntimeSettingsState?,
 
     onBackPress: () -> Unit,
     onShowHelpMenu: () -> Unit,
@@ -172,8 +161,7 @@ fun SettingsSideMenuOverlay(
                 DropdownChoiceMenu(
                     selectedOption = LabeledEntry(readerType, readerStrings.forReaderType(readerType)),
                     options = remember {
-                        val entries = ReaderType.entries.map { LabeledEntry(it, readerStrings.forReaderType(it)) }
-                        if (panelsReaderState == null) entries.filter { it.value != PANELS } else entries
+                        ReaderType.entries.map { LabeledEntry(it, readerStrings.forReaderType(it)) }
                     },
                     onOptionChange = { onReaderTypeChange(it.value) },
                     inputFieldModifier = Modifier.fillMaxWidth(),
@@ -182,12 +170,6 @@ fun SettingsSideMenuOverlay(
                 )
                 when (readerType) {
                     PAGED -> PagedReaderSettingsContent(pagedReaderState)
-                    PANELS -> {
-                        if (panelsReaderState != null) {
-                            PanelsReaderSettingsContent(panelsReaderState)
-                        }
-                    }
-
                     CONTINUOUS -> ContinuousReaderSettingsContent(continuousReaderState)
                 }
             }
@@ -253,8 +235,6 @@ fun SettingsSideMenuOverlay(
                         onStretchToFitChange = onStretchToFitChange,
                         cropBorders = cropBorders,
                         onCropBordersChange = onCropBordersChange,
-                        invertSpeechBubbles = invertSpeechBubbles,
-                        onInvertSpeechBubblesChange = onInvertSpeechBubblesChange,
                         webtoonSmartScroll = webtoonSmartScroll,
                         onWebtoonSmartScrollChange = onWebtoonSmartScrollChange,
                         loadThumbnailPreviews = loadThumbnailPreviews,
@@ -272,46 +252,6 @@ fun SettingsSideMenuOverlay(
                     )
                 }
             }
-            if (onnxRuntimeSettingsState != null && isOnnxRuntimeInstalled()) {
-                HorizontalDivider()
-                var showOnnxRuntimeSettings by remember { mutableStateOf(false) }
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .clickable { showOnnxRuntimeSettings = !showOnnxRuntimeSettings }
-                        .cursorForHand()
-                        .padding(10.dp)
-                ) {
-                    Text("OnnxRuntime")
-                    Spacer(Modifier.weight(1f))
-                    Icon(
-                        Icons.Filled.ArrowDropDown,
-                        null,
-                        Modifier.rotate(if (showOnnxRuntimeSettings) 180f else 0f)
-                    )
-                }
-                AnimatedVisibility(showOnnxRuntimeSettings) {
-                    Column(Modifier.padding(start = 10.dp)) {
-                        UpscaleModeSelector(
-                            currentMode = onnxRuntimeSettingsState.upscaleMode.collectAsState().value,
-                            onModeChange = onnxRuntimeSettingsState::onUpscaleModeChange,
-                            currentModelPath = onnxRuntimeSettingsState.upscaleModelPath.collectAsState().value,
-                            onModelPathChange = onnxRuntimeSettingsState::onUpscaleModelPathChange
-                        )
-                        DeviceSelector(
-                            availableDevices = onnxRuntimeSettingsState.availableDevices,
-                            executionProvider = onnxRuntimeSettingsState.currentExecutionProvider,
-                            currentDeviceId = onnxRuntimeSettingsState.deviceId.collectAsState().value,
-                            onDeviceIdChange = onnxRuntimeSettingsState::onDeviceIdChange
-                        )
-
-                        TileSizeSelector(
-                            tileSize = onnxRuntimeSettingsState.upscalerTileSize.collectAsState().value,
-                            onTileSizeChange = onnxRuntimeSettingsState::onTileSizeChange
-                        )
-                    }
-                }
-            }
             HorizontalDivider()
             when (readerType) {
                 PAGED -> {
@@ -319,17 +259,6 @@ fun SettingsSideMenuOverlay(
                         pages = pagedReaderState.currentSpread.collectAsState().value.pages,
                         modifier = Modifier.padding(start = 10.dp)
                     )
-                }
-
-                PANELS -> {
-                    if (panelsReaderState != null) {
-                        val panelsPage = panelsReaderState.currentPage.collectAsState().value
-                        val pages = remember(panelsPage) {
-                            panelsPage?.let { listOf(PagedReaderState.Page(it.metadata, it.imageResult)) }
-                                ?: emptyList()
-                        }
-                        PagedReaderPagesInfo(pages, modifier = Modifier.padding(start = 10.dp))
-                    }
                 }
 
                 CONTINUOUS -> {
@@ -518,57 +447,6 @@ private fun ColumnScope.PagedReaderSettingsContent(
     }
 }
 
-@Composable
-private fun PanelsReaderSettingsContent(
-    state: PanelsReaderState
-) {
-    val strings = LocalStrings.current.pagedReader
-    val readingDirection = state.readingDirection.collectAsState().value
-    val displayMode = state.fullPageDisplayMode.collectAsState().value
-    val tapToZoom = state.tapToZoom.collectAsState().value
-    val adaptiveBackground = state.adaptiveBackground.collectAsState().value
-
-    Column {
-
-        DropdownChoiceMenu(
-            selectedOption = LabeledEntry(
-                readingDirection,
-                strings.forReadingDirection(readingDirection)
-            ),
-            options = remember {
-                PagedReadingDirection.entries.map { LabeledEntry(it, strings.forReadingDirection(it)) }
-            },
-            onOptionChange = { state.onReadingDirectionChange(it.value) },
-            inputFieldModifier = Modifier.fillMaxWidth(),
-            label = { Text(strings.readingDirection) },
-            inputFieldColor = MaterialTheme.colorScheme.surfaceVariant
-        )
-
-        DropdownChoiceMenu(
-            selectedOption = LabeledEntry(displayMode, displayMode.name),
-            options = remember {
-                PanelsFullPageDisplayMode.entries.map { LabeledEntry(it, it.name) }
-            },
-            onOptionChange = { state.onFullPageDisplayModeChange(it.value) },
-            inputFieldModifier = Modifier.fillMaxWidth(),
-            label = { Text(LocalStrings.current.ui.showFullPage) },
-            inputFieldColor = MaterialTheme.colorScheme.surfaceVariant
-        )
-
-        SwitchWithLabel(
-            checked = tapToZoom,
-            onCheckedChange = state::onTapToZoomChange,
-            label = { Text(LocalStrings.current.ui.tapToZoom) },
-            contentPadding = PaddingValues(horizontal = 10.dp)
-        )
-        SwitchWithLabel(
-            checked = adaptiveBackground,
-            onCheckedChange = state::onAdaptiveBackgroundChange,
-            label = { Text(strings.adaptiveBackground) },
-            contentPadding = PaddingValues(horizontal = 10.dp)
-        )
-    }
-}
 
 @Composable
 private fun BookTitles(book: KomeliaBook) {

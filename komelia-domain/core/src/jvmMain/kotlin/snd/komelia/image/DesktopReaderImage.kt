@@ -11,9 +11,6 @@ import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.toSize
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.drop
-import kotlinx.coroutines.flow.launchIn
-import kotlinx.coroutines.flow.onEach
 import org.jetbrains.skia.Image
 import org.jetbrains.skia.Rect
 import org.jetbrains.skia.SamplingMode
@@ -33,7 +30,6 @@ class DesktopReaderImage(
     upsamplingMode: StateFlow<UpsamplingMode>,
     downSamplingKernel: StateFlow<ReduceKernel>,
     linearLightDownSampling: StateFlow<Boolean>,
-    private val upscaler: KomeliaUpscaler?,
     private val showDebugGrid: StateFlow<Boolean>,
 ) : TilingReaderImage(
     imageDecoder = imageDecoder,
@@ -47,13 +43,6 @@ class DesktopReaderImage(
 ) {
 
     init {
-        upscaler?.upscaleMode?.drop(1)?.onEach {
-            lastUpdateRequest?.let { lastRequest ->
-                this.painter.value = null
-                reloadLastRequest()
-            }
-        }?.launchIn(processingScope)
-
         startImageLoading()
     }
 
@@ -80,10 +69,6 @@ class DesktopReaderImage(
         scaleWidth: Int,
         scaleHeight: Int
     ): ReaderImageData {
-        if (scaleWidth > image.width || scaleHeight > image.pageHeight) {
-            return upscaleImage(image, scaleWidth, scaleHeight)
-        }
-
         val downscaled = image.resize(
             scaleWidth = scaleWidth,
             scaleHeight = scaleHeight,
@@ -105,9 +90,6 @@ class DesktopReaderImage(
         var resized: KomeliaImage? = null
         try {
             region = image.extractArea(imageRegion.toImageRect())
-            if (scaleWidth > imageRegion.width || scaleHeight > imageRegion.height) {
-                return upscaleRegion(image, imageRegion, scaleWidth, scaleHeight)
-            }
             resized = region.resize(
                 scaleWidth = scaleWidth,
                 scaleHeight = scaleHeight,
@@ -118,83 +100,6 @@ class DesktopReaderImage(
         } finally {
             region?.close()
             resized?.close()
-        }
-    }
-
-    private suspend fun upscaleImage(
-        image: KomeliaImage,
-        scaleWidth: Int,
-        scaleHeight: Int,
-    ): ReaderImageData {
-        val upscaled = upscaler?.upscale(image, pageId.toString())
-
-        if (upscaled != null) {
-            if (upscaled.width > scaleWidth && upscaled.pageHeight > scaleHeight) {
-                val resized = upscaled.resize(
-                    scaleWidth = scaleWidth,
-                    scaleHeight = scaleHeight,
-                    linear = linearLightDownSampling.value,
-                    kernel = downSamplingKernel.value
-                )
-                val imageData = resized.toReaderImageData()
-                resized.close()
-                return imageData
-            } else {
-                val imageData = upscaled.toReaderImageData()
-                return imageData
-            }
-        } else {
-            val imageData = image.toReaderImageData()
-            return imageData
-        }
-    }
-
-
-    private suspend fun upscaleRegion(
-        image: KomeliaImage,
-        imageRegion: IntRect,
-        scaleWidth: Int,
-        scaleHeight: Int
-    ): ReaderImageData {
-        // try to reuse full resized image instead of upscaling individual regions
-        val upscaled = upscaler?.upscale(image, pageId.toString())
-        var region: KomeliaImage? = null
-        var resized: KomeliaImage? = null
-
-        try {
-            if (upscaled != null) {
-                // assume upscaling is done by integer fraction (2x, 4x etc.)
-                val scaleRatio = upscaled.width / image.width
-                val targetRegion = ImageRect(
-                    left = imageRegion.left * scaleRatio,
-                    right = imageRegion.right * scaleRatio,
-                    top = imageRegion.top * scaleRatio,
-                    bottom = imageRegion.bottom * scaleRatio
-                )
-                region = upscaled.extractArea(targetRegion)
-
-                // downscale if region is bigger than requested scale
-                if (region.width > scaleWidth || region.pageHeight > scaleHeight) {
-                    resized = region.resize(
-                        scaleWidth = scaleWidth,
-                        scaleHeight = scaleHeight,
-                        linear = linearLightDownSampling.value,
-                        kernel = downSamplingKernel.value
-                    )
-                    return resized.toReaderImageData()
-                    // otherwise do not upsample and return original region size
-                } else {
-                    return region.toReaderImageData()
-                }
-
-                // if onnxruntime upscaling wasn't performed return original region size
-            } else {
-                region = image.extractArea(imageRegion.toImageRect())
-                return region.toReaderImageData()
-            }
-        } finally {
-            resized?.close()
-            region?.close()
         }
     }
 

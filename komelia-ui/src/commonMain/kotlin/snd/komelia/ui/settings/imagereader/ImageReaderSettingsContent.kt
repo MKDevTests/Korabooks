@@ -11,10 +11,6 @@ import snd.komelia.ui.LocalAccentColor
 import snd.komelia.ui.LocalPlatform
 import snd.komelia.ui.common.components.SwitchWithLabel
 import snd.komelia.ui.platform.PlatformType
-import snd.komelia.ui.settings.imagereader.ncnn.*
-import snd.komelia.ui.settings.imagereader.onnxruntime.OnnxRuntimeSettingsContent
-import snd.komelia.ui.settings.imagereader.onnxruntime.OnnxRuntimeSettingsState
-import snd.komelia.ui.settings.imagereader.onnxruntime.isOnnxRuntimeSupported
 import snd.komelia.ui.settings.imagereader.rapidocr.RapidOcrSettingsContent
 import snd.komelia.ui.settings.imagereader.rapidocr.RapidOcrSettingsState
 import snd.komelia.ui.settings.imagereader.rapidocr.isRapidOcrSupported
@@ -23,8 +19,7 @@ import snd.komelia.ui.LocalStrings
 /**
  * Whether the reader's manga tooling is offered at all.
  *
- * Webtoon detection, speech-bubble inversion, the neural upscalers and the
- * OCR are answers to questions a manga reader has. A Calibre library is
+ A Calibre library is
  * novels and essays, and every one of these settings asks its reader to have
  * an opinion about something that will never happen to them.
  *
@@ -60,19 +55,13 @@ fun ImageReaderSettingsContent(
     webtoonSmartScroll: Boolean,
     onWebtoonSmartScrollChange: (Boolean) -> Unit,
 
-    invertSpeechBubbles: Boolean,
-    onInvertSpeechBubblesChange: (Boolean) -> Unit,
 
     continuousReaderStopAtEnd: Boolean,
     onContinuousReaderStopAtEndChange: (Boolean) -> Unit,
 
     onCacheClear: () -> Unit,
-    onnxRuntimeSettingsState: OnnxRuntimeSettingsState,
-    ncnnSettingsState: NcnnSettingsState,
     rapidOcrSettingsState: RapidOcrSettingsState,
 ) {
-    var showLogs by remember { mutableStateOf(false) }
-    var showCrashLogs by remember { mutableStateOf(false) }
     val accentColor = LocalAccentColor.current
 
     Column(
@@ -127,13 +116,6 @@ fun ImageReaderSettingsContent(
                 label = { Text(LocalStrings.current.ui.webtoonSmartScroll) },
                 supportingText = { Text(LocalStrings.current.ui.inTheContinuousReaderA) },
             )
-
-            SwitchWithLabel(
-                checked = invertSpeechBubbles,
-                onCheckedChange = onInvertSpeechBubblesChange,
-                label = { Text(LocalStrings.current.ui.invertSpeechBubbles) },
-                supportingText = { Text(LocalStrings.current.ui.blackBubbleWhiteTextArtwork2) },
-            )
         }
 
         SwitchWithLabel(
@@ -175,38 +157,6 @@ fun ImageReaderSettingsContent(
             )
         }
 
-        if (MANGA_TOOLS_VISIBLE && isOnnxRuntimeSupported()) {
-            HorizontalDivider(Modifier.padding(vertical = 10.dp))
-            OnnxRuntimeSettingsContent(
-                executionProvider = onnxRuntimeSettingsState.currentExecutionProvider,
-                availableDevices = onnxRuntimeSettingsState.availableDevices,
-                deviceId = onnxRuntimeSettingsState.deviceId.collectAsState().value,
-                onDeviceIdChange = onnxRuntimeSettingsState::onDeviceIdChange,
-                upscaleMode = onnxRuntimeSettingsState.upscaleMode.collectAsState().value,
-                onUpscaleModeChange = onnxRuntimeSettingsState::onUpscaleModeChange,
-                upscalerTileSize = onnxRuntimeSettingsState.upscalerTileSize.collectAsState().value,
-                onUpscalerTileSizeChange = onnxRuntimeSettingsState::onTileSizeChange,
-                upscaleModelPath = onnxRuntimeSettingsState.upscaleModelPath.collectAsState().value,
-                onUpscaleModelPathChange = onnxRuntimeSettingsState::onUpscaleModelPathChange,
-                onOrtInstall = onnxRuntimeSettingsState::onInstallRequest,
-                mangaJaNaiIsInstalled = onnxRuntimeSettingsState.mangaJaNaiIsInstalled.collectAsState().value,
-                onMangaJaNaiDownload = onnxRuntimeSettingsState::onMangaJaNaiDownloadRequest,
-                panelModelIsDownloaded = onnxRuntimeSettingsState.panelModelIsDownloaded.collectAsState().value,
-                panelDetectionUrl = onnxRuntimeSettingsState.panelDetectionUrl.collectAsState().value,
-                onPanelDetectionUrlChange = onnxRuntimeSettingsState::onPanelDetectionUrlChange,
-                onPanelDetectionModelDownloadRequest = onnxRuntimeSettingsState::onPanelDetectionModelDownloadRequest
-            )
-        }
-
-        if (MANGA_TOOLS_VISIBLE && isNcnnSupported()) {
-            HorizontalDivider(Modifier.padding(vertical = 10.dp))
-            NcnnSettingsContent(
-                settings = ncnnSettingsState.ncnnUpscalerSettings.collectAsState().value,
-                onSettingsChange = ncnnSettingsState::onSettingsChange,
-                onDownloadRequest = ncnnSettingsState::onNcnnDownloadRequest
-            )
-        }
-
         if (MANGA_TOOLS_VISIBLE && isRapidOcrSupported()) {
             HorizontalDivider(Modifier.padding(vertical = 10.dp))
             RapidOcrSettingsContent(
@@ -215,35 +165,6 @@ fun ImageReaderSettingsContent(
                 onRapidOcrModelsUrlChange = rapidOcrSettingsState::onRapidOcrModelsUrlChange,
                 downloadFlow = rapidOcrSettingsState::downloadFlow
             )
-        }
-
-        if (MANGA_TOOLS_VISIBLE && isNcnnSupported()) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End
-            ) {
-                TextButton(
-                    onClick = { showLogs = true },
-                    colors = accentColor?.let { ButtonDefaults.textButtonColors(contentColor = it) }
-                        ?: ButtonDefaults.textButtonColors()
-                ) {
-                    Text(LocalStrings.current.ui.viewLogs2)
-                }
-                TextButton(
-                    onClick = { showCrashLogs = true },
-                    colors = accentColor?.let { ButtonDefaults.textButtonColors(contentColor = it) }
-                        ?: ButtonDefaults.textButtonColors()
-                ) {
-                    Text(LocalStrings.current.ui.crashLogs)
-                }
-            }
-        }
-
-        if (showLogs) {
-            NcnnLogViewerDialog(onDismiss = { showLogs = false })
-        }
-        if (showCrashLogs) {
-            NcnnCrashLogViewerDialog(onDismiss = { showCrashLogs = false })
         }
     }
 }

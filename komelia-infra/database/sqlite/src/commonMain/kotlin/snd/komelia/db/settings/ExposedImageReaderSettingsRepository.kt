@@ -12,11 +12,8 @@ import snd.komelia.db.defaultBookId
 import snd.komelia.db.tables.ImageReaderSettingsTable
 import snd.komelia.image.ReduceKernel
 import snd.komelia.image.UpsamplingMode
-import snd.komelia.image.UpscaleMode
 import snd.komelia.settings.model.ContinuousReadingDirection
 import snd.komelia.settings.model.LayoutScaleType
-import snd.komelia.settings.model.NcnnEngine
-import snd.komelia.settings.model.NcnnUpscalerSettings
 import snd.komelia.settings.model.OcrEngine
 import snd.komelia.settings.model.OcrLanguage
 import snd.komelia.settings.model.OcrSettings
@@ -38,19 +35,10 @@ class ExposedImageReaderSettingsRepository(database: Database) : ExposedReposito
                 ?.let {
 
                     ImageReaderSettings(
-                        readerType = ReaderType.valueOf(it[ImageReaderSettingsTable.readerType]),
+                        readerType = ReaderType.entries
+                            .firstOrNull { type -> type.name == it[ImageReaderSettingsTable.readerType] }
+                            ?: ReaderType.PAGED,
                         stretchToFit = it[ImageReaderSettingsTable.stretchToFit],
-                        ncnnUpscalerSettings = NcnnUpscalerSettings(
-                            enabled = it[ImageReaderSettingsTable.ncnnEnabled],
-                            engine = NcnnEngine.valueOf(it[ImageReaderSettingsTable.ncnnEngine]),
-                            model = it[ImageReaderSettingsTable.ncnnModel],
-                            gpuId = it[ImageReaderSettingsTable.ncnnGpuId],
-                            ttaMode = it[ImageReaderSettingsTable.ncnnTtaMode],
-                            numThreads = it[ImageReaderSettingsTable.ncnnNumThreads],
-                            upscaleOnLoad = it[ImageReaderSettingsTable.ncnnUpscaleOnLoad],
-                            upscaleThreshold = it[ImageReaderSettingsTable.ncnnUpscaleThreshold],
-                            ncnnUpscalerUrl = it[ImageReaderSettingsTable.ncnnUpscalerUrl],
-                        ),
                         ocrSettings = OcrSettings(
                             enabled = it[ImageReaderSettingsTable.ocrEnabled],
                             selectedLanguage = OcrLanguage.valueOf(it[ImageReaderSettingsTable.ocrLanguage]),
@@ -74,11 +62,6 @@ class ExposedImageReaderSettingsRepository(database: Database) : ExposedReposito
                         upsamplingMode = UpsamplingMode.valueOf(it[ImageReaderSettingsTable.upsamplingMode]),
                         loadThumbnailPreviews = it[ImageReaderSettingsTable.loadThumbnailPreviews],
                         volumeKeysNavigation = it[ImageReaderSettingsTable.volumeKeysNavigation],
-                        ortUpscalerMode = UpscaleMode.valueOf(it[ImageReaderSettingsTable.ortUpscalerMode]),
-                        ortUpscalerUserModelPath = it[ImageReaderSettingsTable.ortUpscalerUserModelPath]
-                            ?.let { PlatformFile(it) },
-                        ortUpscalerDeviceId = it[ImageReaderSettingsTable.ortDeviceId],
-                        ortUpscalerTileSize = it[ImageReaderSettingsTable.ortUpscalerTileSize],
                         panelsFullPageDisplayMode = it[ImageReaderSettingsTable.panelsFullPageDisplayMode]
                             .let { mode -> PanelsFullPageDisplayMode.valueOf(mode) },
                         pagedReaderTapToZoom = it[ImageReaderSettingsTable.pagedReaderTapToZoom],
@@ -87,7 +70,6 @@ class ExposedImageReaderSettingsRepository(database: Database) : ExposedReposito
                         panelReaderAdaptiveBackground = it[ImageReaderSettingsTable.panelReaderAdaptiveBackground],
                         tapNavigationMode = it[ImageReaderSettingsTable.tapNavigationMode]
                             .let { mode -> ReaderTapNavigationMode.valueOf(mode) },
-                        panelDetectionUrl = it[ImageReaderSettingsTable.panelDetectionUrl],
                         rapidOcrModelsUrl = it[ImageReaderSettingsTable.rapidOcrModelsUrl],
                         imageCacheSizeLimitMb = it[ImageReaderSettingsTable.imageCacheSizeLimitMb],
                         pagedSplitDoublePages = it[ImageReaderSettingsTable.pagedSplitDoublePages],
@@ -98,7 +80,6 @@ class ExposedImageReaderSettingsRepository(database: Database) : ExposedReposito
                         continuousReaderStopAtEnd = it[ImageReaderSettingsTable.continuousReaderStopAtEnd],
                         continuousReaderTapToZoom = it[ImageReaderSettingsTable.continuousReaderTapToZoom],
                         keepProgressBarVisibleWhileReading = it[ImageReaderSettingsTable.keepProgressBarVisibleWhileReading],
-                        invertSpeechBubbles = it[ImageReaderSettingsTable.invertSpeechBubbles],
                     )
                 }
         }
@@ -111,15 +92,6 @@ class ExposedImageReaderSettingsRepository(database: Database) : ExposedReposito
                 it[readerType] = settings.readerType.name
                 it[stretchToFit] = settings.stretchToFit
 
-                it[ncnnEnabled] = settings.ncnnUpscalerSettings.enabled
-                it[ncnnEngine] = settings.ncnnUpscalerSettings.engine.name
-                it[ncnnModel] = settings.ncnnUpscalerSettings.model
-                it[ncnnGpuId] = settings.ncnnUpscalerSettings.gpuId
-                it[ncnnTtaMode] = settings.ncnnUpscalerSettings.ttaMode
-                it[ncnnNumThreads] = settings.ncnnUpscalerSettings.numThreads
-                it[ncnnUpscaleOnLoad] = settings.ncnnUpscalerSettings.upscaleOnLoad
-                it[ncnnUpscaleThreshold] = settings.ncnnUpscalerSettings.upscaleThreshold
-                it[ncnnUpscalerUrl] = settings.ncnnUpscalerSettings.ncnnUpscalerUrl
 
                 it[ocrEnabled] = settings.ocrSettings.enabled
                 it[ocrLanguage] = settings.ocrSettings.selectedLanguage.name
@@ -143,17 +115,12 @@ class ExposedImageReaderSettingsRepository(database: Database) : ExposedReposito
                 it[loadThumbnailPreviews] = settings.loadThumbnailPreviews
                 it[volumeKeysNavigation] = settings.volumeKeysNavigation
                 it[upsamplingMode] = settings.upsamplingMode.name
-                it[ortUpscalerMode] = settings.ortUpscalerMode.name
-                it[ortUpscalerUserModelPath] = settings.ortUpscalerUserModelPath?.path
-                it[ortDeviceId] = settings.ortUpscalerDeviceId
-                it[ortUpscalerTileSize] = settings.ortUpscalerTileSize
                 it[panelsFullPageDisplayMode] = settings.panelsFullPageDisplayMode.name
                 it[pagedReaderTapToZoom] = settings.pagedReaderTapToZoom
                 it[panelReaderTapToZoom] = settings.panelReaderTapToZoom
                 it[pagedReaderAdaptiveBackground] = settings.pagedReaderAdaptiveBackground
                 it[panelReaderAdaptiveBackground] = settings.panelReaderAdaptiveBackground
                 it[tapNavigationMode] = settings.tapNavigationMode.name
-                it[panelDetectionUrl] = settings.panelDetectionUrl
                 it[rapidOcrModelsUrl] = settings.rapidOcrModelsUrl
                 it[imageCacheSizeLimitMb] = settings.imageCacheSizeLimitMb
                 it[pagedSplitDoublePages] = settings.pagedSplitDoublePages
@@ -164,7 +131,6 @@ class ExposedImageReaderSettingsRepository(database: Database) : ExposedReposito
                 it[continuousReaderStopAtEnd] = settings.continuousReaderStopAtEnd
                 it[continuousReaderTapToZoom] = settings.continuousReaderTapToZoom
                 it[keepProgressBarVisibleWhileReading] = settings.keepProgressBarVisibleWhileReading
-                it[invertSpeechBubbles] = settings.invertSpeechBubbles
             }
         }
     }

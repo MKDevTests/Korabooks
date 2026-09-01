@@ -51,7 +51,6 @@ kotlin {
             api(projects.komeliaDomain.offline)
             api(projects.komeliaInfra.database.shared)
             api(projects.komeliaInfra.imageDecoder.shared)
-            api(projects.komeliaInfra.onnxruntime.api)
             implementation(projects.komeliaInfra.webview)
             implementation(projects.komeliaInfra.database.transaction)
             implementation(projects.thirdParty.chipTextField.chiptextfieldM3)
@@ -109,7 +108,6 @@ kotlin {
             implementation(libs.okhttp.logging.interceptor)
             implementation(libs.slf4j.api)
             implementation(projects.komeliaInfra.imageDecoder.vips)
-            implementation(projects.komeliaInfra.onnxruntime.jvm)
             implementation(projects.epubReader)
             implementation("androidx.fragment:fragment-ktx:1.8.5")
             implementation("org.readium.kotlin-toolkit:readium-shared:3.1.2")
@@ -133,7 +131,6 @@ kotlin {
             implementation(libs.secret.service)
             implementation(libs.slf4j.api)
             implementation(projects.komeliaInfra.imageDecoder.vips)
-            implementation(projects.komeliaInfra.onnxruntime.jvm)
         }
 
         wasmJsMain.dependencies {

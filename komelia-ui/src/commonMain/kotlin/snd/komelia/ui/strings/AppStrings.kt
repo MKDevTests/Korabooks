@@ -2,7 +2,6 @@ package snd.komelia.ui.strings
 
 import snd.komelia.image.ReduceKernel
 import snd.komelia.image.UpsamplingMode
-import snd.komelia.image.UpscaleMode
 import snd.komelia.settings.model.AppTheme
 import snd.komelia.settings.model.ContinuousReadingDirection
 import snd.komelia.settings.model.EpubReaderType
@@ -263,8 +262,6 @@ class UiStrings(private val values: Map<String, String>) {
     val bibliothQuesInclusesDansToutes: String get() = at("bibliothQuesInclusesDansToutes")
     val biggerThanThisTheLists: String get() = at("biggerThanThisTheLists")
     val black: String get() = at("black")
-    val blackBubbleWhiteTextArtwork: String get() = at("blackBubbleWhiteTextArtwork")
-    val blackBubbleWhiteTextArtwork2: String get() = at("blackBubbleWhiteTextArtwork2")
     val body: String get() = at("body")
     val bookCount: String get() = at("bookCount")
     val bookCovers: String get() = at("bookCovers")
@@ -298,7 +295,6 @@ class UiStrings(private val values: Map<String, String>) {
     val choisirLaCouverture: String get() = at("choisirLaCouverture")
     val choose: String get() = at("choose")
     val chooseAnImageDragAnd: String get() = at("chooseAnImageDragAnd")
-    val chooseOnnxRuntimeVersion: String get() = at("chooseOnnxRuntimeVersion")
     val chooseWhichAuthorRolesTo: String get() = at("chooseWhichAuthorRolesTo")
     val clear: String get() = at("clear")
     val clearAll: String get() = at("clearAll")
@@ -395,12 +391,10 @@ class UiStrings(private val values: Map<String, String>) {
     val downloadCudnn9: String get() = at("downloadCudnn9")
     val downloadModel: String get() = at("downloadModel")
     val downloadModels: String get() = at("downloadModels")
-    val downloadOnnxRuntime: String get() = at("downloadOnnxRuntime")
     val downloadTensorrt: String get() = at("downloadTensorrt")
     val downloaded: String get() = at("downloaded")
     val downloading: String get() = at("downloading")
     val downloadingMangabakaDatabase: String get() = at("downloadingMangabakaDatabase")
-    val downloadingOnnxRuntime: String get() = at("downloadingOnnxRuntime")
     val downloads: String get() = at("downloads")
     val edit: String get() = at("edit")
     val editModeClickToSelect: String get() = at("editModeClickToSelect")
@@ -412,7 +406,6 @@ class UiStrings(private val values: Map<String, String>) {
     val enableAutomaticBackups: String get() = at("enableAutomaticBackups")
     val enableIgnoreList: String get() = at("enableIgnoreList")
     val enableMetadataUpdateJobsFor: String get() = at("enableMetadataUpdateJobsFor")
-    val enableNcnnUpscalerMobileOnly: String get() = at("enableNcnnUpscalerMobileOnly")
     val enableNotificationJobsForLibraries: String get() = at("enableNotificationJobsForLibraries")
     val enableTextSelection: String get() = at("enableTextSelection")
     val enabled: String get() = at("enabled")
@@ -521,7 +514,6 @@ class UiStrings(private val values: Map<String, String>) {
     val install: String get() = at("install")
     val installed: String get() = at("installed")
     val invalidWebhookUrl: String get() = at("invalidWebhookUrl")
-    val invertSpeechBubbles: String get() = at("invertSpeechBubbles")
     val isbn: String get() = at("isbn")
     val isbnBarcode: String get() = at("isbnBarcode")
     val jeton24CaractResMin: String get() = at("jeton24CaractResMin")
@@ -578,7 +570,6 @@ class UiStrings(private val values: Map<String, String>) {
     val male: String get() = at("male")
     val manageConnectedServers: String get() = at("manageConnectedServers")
     val mangabakaOfflineDatabase: String get() = at("mangabakaOfflineDatabase")
-    val mangajanaiOnnxModelsPreset: String get() = at("mangajanaiOnnxModelsPreset")
     val manualOrdering: String get() = at("manualOrdering")
     val margins: String get() = at("margins")
     val markAsRead: String get() = at("markAsRead")
@@ -610,7 +601,6 @@ class UiStrings(private val values: Map<String, String>) {
     val nameMatchingMode: String get() = at("nameMatchingMode")
     val nativeEpub3ReaderWith: String get() = at("nativeEpub3ReaderWith")
     val navigation: String get() = at("navigation")
-    val ncnnUpscalerLogs: String get() = at("ncnnUpscalerLogs")
     val newLibraryUi: String get() = at("newLibraryUi")
     val newPassword: String get() = at("newPassword")
     val newUi2: String get() = at("newUi2")
@@ -649,9 +639,6 @@ class UiStrings(private val values: Map<String, String>) {
     val offlineMode2: String get() = at("offlineMode2")
     val ok: String get() = at("ok")
     val oncePerLibrarySuggestionsAre: String get() = at("oncePerLibrarySuggestionsAre")
-    val onnxModelPath: String get() = at("onnxModelPath")
-    val onnxRuntimeSupportIsExperimental: String get() = at("onnxRuntimeSupportIsExperimental")
-    val onnxruntimeUpscaleMode: String get() = at("onnxruntimeUpscaleMode")
     val openInKomga: String get() = at("openInKomga")
     val openMenu: String get() = at("openMenu")
     val openStats: String get() = at("openStats")
@@ -675,7 +662,6 @@ class UiStrings(private val values: Map<String, String>) {
     val paged: String get() = at("paged")
     val pages: String get() = at("pages")
     val pagesRead: String get() = at("pagesRead")
-    val panelDetection: String get() = at("panelDetection")
     val panels: String get() = at("panels")
     val paraSpacing: String get() = at("paraSpacing")
     val parent: String get() = at("parent")
@@ -923,8 +909,6 @@ class UiStrings(private val values: Map<String, String>) {
     val unset: String get() = at("unset")
     val update: String get() = at("update")
     val updateModes: String get() = at("updateModes")
-    val updateOnnxRuntime: String get() = at("updateOnnxRuntime")
-    val updateOrDownloadAnotherVersion: String get() = at("updateOrDownloadAnotherVersion")
     val updateSeriesAlternativeTitleIf: String get() = at("updateSeriesAlternativeTitleIf")
     val updateSeriesTitleIfMatched: String get() = at("updateSeriesTitleIfMatched")
     val updates: String get() = at("updates")
@@ -932,8 +916,6 @@ class UiStrings(private val values: Map<String, String>) {
     val uploadBookCovers: String get() = at("uploadBookCovers")
     val uploadSeriesCover: String get() = at("uploadSeriesCover")
     val uploadSeriesCovers: String get() = at("uploadSeriesCovers")
-    val upscalerSettings: String get() = at("upscalerSettings")
-    val upscaling: String get() = at("upscaling")
     val url: String get() = at("url")
     val urlToolkitHttpHTe: String get() = at("urlToolkitHttpHTe")
     val urls: String get() = at("urls")
@@ -1164,7 +1146,6 @@ data class UserEditStrings(
 data class ReaderStrings(
     val zoom: String,
     val readerPaged: String,
-    val readerPanels: String,
     val readerType: String,
     val readerContinuous: String,
     val stretchToFit: String,
@@ -1188,7 +1169,6 @@ data class ReaderStrings(
     fun forReaderType(type: ReaderType): String {
         return when (type) {
             ReaderType.PAGED -> readerPaged
-            ReaderType.PANELS -> readerPanels
             ReaderType.CONTINUOUS -> readerContinuous
         }
     }
@@ -1570,21 +1550,7 @@ data class ImageSettingsStrings(
     val downsamplingKernelMKS2021: String,
     val downsamplingKernelDefault: String,
 
-    val ncnnUpscaleMode: String,
-    val ncnnUpscaleModeNone: String,
-    val ncnnUpscaleModeWaifu2x: String,
-    val ncnnUpscaleModeRealCugan: String,
-    val ncnnUpscaleModeRealSr: String,
-    val ncnnUpscaleModeRealEsrgan: String,
-    val ncnnUpscaleOnLoad: String,
-    val ncnnUpscaleOnLoadThreshold: String,
-    val ncnnUpscaleOnLoadTooltip: String,
 
-    val onnxRuntimeExecutionProvider: String,
-    val onnxRuntimeUpscaleMode: String,
-    val onnxRuntimeUpscaleModeNone: String,
-    val onnxRuntimeUpscaleModeUserModel: String,
-    val onnxRuntimeUpscaleModeMangaJaNai: String,
 ) {
     fun forUpsamplingMode(mode: UpsamplingMode): String {
         return when (mode) {
@@ -1606,14 +1572,6 @@ data class ImageSettingsStrings(
             ReduceKernel.MKS2013 -> downsamplingKernelMKS2013
             ReduceKernel.MKS2021 -> downsamplingKernelMKS2021
             ReduceKernel.DEFAULT -> downsamplingKernelDefault
-        }
-    }
-
-    fun forOnnxRuntimeUpscaleMode(mode: UpscaleMode): String {
-        return when (mode) {
-            UpscaleMode.USER_SPECIFIED_MODEL -> onnxRuntimeUpscaleModeUserModel
-            UpscaleMode.MANGAJANAI_PRESET -> onnxRuntimeUpscaleModeMangaJaNai
-            UpscaleMode.NONE -> onnxRuntimeUpscaleModeNone
         }
     }
 }

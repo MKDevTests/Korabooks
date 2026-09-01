@@ -70,17 +70,15 @@ kotlin {
             implementation(libs.androidx.glance.material3)
             implementation(libs.androidx.lifecycle.process)
             implementation(projects.komeliaInfra.database.sqlite)
-            implementation(projects.komeliaInfra.ncnnUpscaler)
+            implementation(projects.komeliaInfra.imageDecoder.vips)
             implementation(libs.filekit.core)
             implementation(libs.filekit.dialogs)
-            implementation(projects.komeliaInfra.onnxruntime.jvm)
             implementation(libs.junrar)
         }
         jvmMain.dependencies {
             implementation(libs.jbr.api)
             implementation(projects.komeliaInfra.database.sqlite)
             implementation(projects.komeliaInfra.imageDecoder.vips)
-            implementation(projects.komeliaInfra.onnxruntime.jvm)
             implementation(libs.filekit.core)
         }
         wasmJsMain.dependencies {
@@ -147,20 +145,12 @@ android {
             pickFirsts += "lib/*/libc++_shared.so"
             pickFirsts += "**/libdatastore_shared_counter.so"
 
-            // Korabooks reads books, so nothing here has a caller: OCR is for
-            // scanned speech balloons and the upscaler is for comic pages.
-            // Sixty-four megabytes of native code for features a Calibre
-            // library cannot use.
-            //
-            // Excluded rather than unwired because the code that would have to
-            // go spans sixty-seven files, and the app is already built to
-            // survive their absence — createOnnxRuntime() returns null, the
-            // models are downloaded rather than bundled, and every loader sits
-            // behind a runCatching. Their real removal belongs to the pass that
-            // reworks the reader, not to a packaging change.
+            // The upscaler and the panel detector are gone from the source
+            // now, so two of these excludes have nothing left to exclude. What
+            // remains is OCR, which is still wired but whose native libraries
+            // and models this list has always stripped — it has never run on
+            // Android, and removing its code is the next pass, not this one.
             excludes += "**/libonnxruntime*.so"
-            excludes += "**/libkomelia_onnxruntime*.so"
-            excludes += "**/libncnn*.so"
             excludes += "**/libopencv_java4.so"
             excludes += "**/libmlkit*.so"
         }
@@ -247,12 +237,10 @@ android {
 
 configurations.all {
     resolutionStrategy {
-        // MUST match the ONNX Runtime version built by the superbuild
-        // (cmake/external/onnxruntime.cmake, GIT_TAG v1.25.0). libkomelia_onnxruntime.so
-        // links the VERSIONED symbol OrtGetApiBase@VERS_<x.y.z>, so a mismatch makes
-        // dlopen fail -> OnnxRuntimeSharedLibraries.isAvailable stays false -> the whole
-        // ONNX feature (panel detection, upscaling) vanishes from the UI with no error
-        // shown on Android. Bump both sides together.
+        // Pin the ONNX Runtime that rapidocr-android drags in. Nothing of ours
+        // calls it any more — the upscaler and the panel detector are gone — but
+        // an unpinned transitive version would still land in the dependency graph
+        // and change what gets excluded from packaging below.
         force("com.microsoft.onnxruntime:onnxruntime-android:1.25.0")
     }
 }

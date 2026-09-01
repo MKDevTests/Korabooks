@@ -39,15 +39,11 @@ class ImageReaderSettingsScreen : Screen {
                 onPagedAutoDetectWebtoonChange = vm::onPagedAutoDetectWebtoonChange,
                 webtoonSmartScroll = vm.webtoonSmartScroll.collectAsState().value,
                 onWebtoonSmartScrollChange = vm::onWebtoonSmartScrollChange,
-                invertSpeechBubbles = vm.invertSpeechBubbles.collectAsState().value,
-                onInvertSpeechBubblesChange = vm::onInvertSpeechBubblesChange,
 
                 continuousReaderStopAtEnd = vm.continuousReaderStopAtEnd.collectAsState().value,
                 onContinuousReaderStopAtEndChange = vm::onContinuousReaderStopAtEndChange,
 
                 onCacheClear = vm::onClearImageCache,
-                onnxRuntimeSettingsState = vm.onnxRuntimeSettingsState,
-                ncnnSettingsState = vm.ncnnSettingsState,
                 rapidOcrSettingsState = vm.rapidOcrSettingsState,
             )
         }

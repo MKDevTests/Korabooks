@@ -36,7 +36,6 @@ import snd.komelia.settings.model.PagedReadingDirection
 import snd.komelia.settings.model.ReaderType
 import snd.komelia.settings.model.ReaderType.CONTINUOUS
 import snd.komelia.settings.model.ReaderType.PAGED
-import snd.komelia.settings.model.ReaderType.PANELS
 import snd.komelia.ui.LocalPlatform
 import snd.komelia.ui.LocalStrings
 import snd.komelia.ui.LocalUseNewLibraryUI2
@@ -54,9 +53,6 @@ import snd.komelia.ui.reader.image.common.ProgressSlider
 import snd.komelia.ui.reader.image.common.ThumbnailCarousel
 import snd.komelia.ui.reader.image.continuous.ContinuousReaderState
 import snd.komelia.ui.reader.image.paged.PagedReaderState
-import snd.komelia.ui.reader.image.panels.PanelsReaderState
-import snd.komelia.ui.settings.imagereader.ncnn.NcnnSettingsState
-import snd.komelia.ui.settings.imagereader.onnxruntime.OnnxRuntimeSettingsState
 
 @Composable
 fun BoxScope.SettingsOverlay(
@@ -64,9 +60,6 @@ fun BoxScope.SettingsOverlay(
     commonReaderState: ReaderState,
     pagedReaderState: PagedReaderState,
     continuousReaderState: ContinuousReaderState,
-    panelsReaderState: PanelsReaderState?,
-    onnxRuntimeSettingsState: OnnxRuntimeSettingsState?,
-    ncnnSettingsState: NcnnSettingsState,
     screenScaleState: ScreenScaleState,
     isColorCorrectionsActive: Boolean,
     onColorCorrectionClick: () -> Unit,
@@ -97,7 +90,6 @@ fun BoxScope.SettingsOverlay(
     val linearLightDownsampling = commonReaderState.linearLightDownsampling.collectAsState().value
     val stretchToFit = commonReaderState.imageStretchToFit.collectAsState().value
     val cropBorders = commonReaderState.cropBorders.collectAsState().value
-    val invertSpeechBubbles = commonReaderState.invertSpeechBubbles.collectAsState().value
     val webtoonSmartScroll = commonReaderState.webtoonSmartScroll.collectAsState().value
     val loadThumbnailPreviews = commonReaderState.loadThumbnailPreviews.collectAsState().value
     val flashEnabled = commonReaderState.flashOnPageChange.collectAsState().value
@@ -126,8 +118,6 @@ fun BoxScope.SettingsOverlay(
             onStretchToFitChange = commonReaderState::onStretchToFitChange,
             cropBorders = cropBorders,
             onCropBordersChange = commonReaderState::onCropBordersChange,
-            invertSpeechBubbles = invertSpeechBubbles,
-            onInvertSpeechBubblesChange = commonReaderState::onInvertSpeechBubblesChange,
             webtoonSmartScroll = webtoonSmartScroll,
             onWebtoonSmartScrollChange = commonReaderState::onWebtoonSmartScrollChange,
             loadThumbnailPreviews = loadThumbnailPreviews,
@@ -135,7 +125,6 @@ fun BoxScope.SettingsOverlay(
             zoom = zoom,
             pagedReaderState = pagedReaderState,
             continuousReaderState = continuousReaderState,
-            panelsReaderState = panelsReaderState,
             commonReaderState = commonReaderState,
 
             flashEnabled = flashEnabled,
@@ -150,7 +139,6 @@ fun BoxScope.SettingsOverlay(
             tapNavigationMode = tapNavigationMode,
             onTapNavigationModeChange = commonReaderState::onTapNavigationModeChange,
 
-            ncnnSettingsState = ncnnSettingsState,
             onBackPress = onBackPress,
             onNotesClick = onNotesClick,
         )
@@ -173,8 +161,6 @@ fun BoxScope.SettingsOverlay(
             onStretchToFitChange = commonReaderState::onStretchToFitChange,
             cropBorders = cropBorders,
             onCropBordersChange = commonReaderState::onCropBordersChange,
-            invertSpeechBubbles = invertSpeechBubbles,
-            onInvertSpeechBubblesChange = commonReaderState::onInvertSpeechBubblesChange,
             webtoonSmartScroll = webtoonSmartScroll,
             onWebtoonSmartScrollChange = commonReaderState::onWebtoonSmartScrollChange,
             loadThumbnailPreviews = loadThumbnailPreviews,
@@ -197,8 +183,6 @@ fun BoxScope.SettingsOverlay(
 
             pagedReaderState = pagedReaderState,
             continuousReaderState = continuousReaderState,
-            panelsReaderState = panelsReaderState,
-            onnxRuntimeSettingsState = onnxRuntimeSettingsState,
 
             onBackPress = onBackPress,
             onShowHelpMenu = { ohShowHelpDialogChange(true) },
@@ -212,7 +196,6 @@ fun BoxScope.SettingsOverlay(
     val currentPageIndex = when (readerType) {
         PAGED -> pagedReaderState.currentSpreadIndex.collectAsState().value
         CONTINUOUS -> commonReaderState.readProgressPage.collectAsState().value - 1
-        PANELS -> panelsReaderState?.currentPageIndex?.collectAsState()?.value?.page ?: 0
     }
 
     AnimatedContent(
@@ -235,7 +218,6 @@ fun BoxScope.SettingsOverlay(
                     )
                     when (readerType) {
                         PAGED -> pagedReaderState.jumpToPage(it)
-                        PANELS -> panelsReaderState?.jumpToPage(it)
                         CONTINUOUS -> coroutineScope.launch { continuousReaderState.scrollToBookPage(it + 1) }
                     }
 
@@ -271,35 +253,6 @@ fun BoxScope.SettingsOverlay(
                                 )
                             }
 
-                            PANELS -> {
-                                check(panelsReaderState != null) { "panels reader is not initialized" }
-                                val readingDirection = panelsReaderState.readingDirection.collectAsState().value
-                                val layoutDirection = remember(readingDirection) {
-                                    when (readingDirection) {
-                                        PagedReadingDirection.LEFT_TO_RIGHT -> Ltr
-                                        PagedReadingDirection.RIGHT_TO_LEFT -> Rtl
-                                    }
-                                }
-                                val pages = panelsReaderState.pageMetadata.collectAsState().value
-                                val currentIndex = panelsReaderState.currentPageIndex.collectAsState().value
-                                PageSpreadProgressSlider(
-                                    pageSpreads = pages.map { listOf(it) },
-                                    currentSpreadIndex = currentIndex.page,
-                                    onPageNumberChange = {
-                                        commonReaderState.navigationHistory.addEntry(
-                                            NavigationSource.SLIDER,
-                                            ImagePageLocation(currentPageIndex)
-                                        )
-                                        panelsReaderState.jumpToPage(it)
-                                    },
-
-                                    loadThumbnailPreviews = loadThumbnailPreviews,
-                                    show = show,
-                                    layoutDirection = layoutDirection,
-                                    onLabelClick = commonReaderState::onToggleCarousel
-                                )
-
-                            }
 
                             CONTINUOUS -> {
                                 val readingDirection = continuousReaderState.readingDirection.collectAsState().value

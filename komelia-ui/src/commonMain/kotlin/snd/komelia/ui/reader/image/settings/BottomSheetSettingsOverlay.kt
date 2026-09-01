@@ -90,7 +90,6 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import snd.komelia.image.ReduceKernel
-import snd.komelia.image.UpscaleStatus
 import snd.komelia.image.UpsamplingMode
 import snd.komelia.komga.api.model.KomeliaBook
 import snd.komelia.settings.model.ContinuousReadingDirection
@@ -108,7 +107,6 @@ import snd.komelia.settings.model.ReaderFlashColor
 import snd.komelia.settings.model.ReaderType
 import snd.komelia.settings.model.ReaderType.CONTINUOUS
 import snd.komelia.settings.model.ReaderType.PAGED
-import snd.komelia.settings.model.ReaderType.PANELS
 import snd.komelia.ui.LocalAccentColor
 import snd.komelia.ui.LocalPlatform
 import snd.komelia.ui.platform.PlatformType.MOBILE
@@ -131,9 +129,6 @@ import snd.komelia.ui.reader.image.common.ProgressSlider
 import snd.komelia.ui.reader.image.common.ThumbnailCarousel
 import snd.komelia.ui.reader.image.continuous.ContinuousReaderState
 import snd.komelia.ui.reader.image.paged.PagedReaderState
-import snd.komelia.ui.reader.image.panels.PanelsReaderState
-import snd.komelia.ui.settings.imagereader.ncnn.NcnnSettingsState
-import snd.komelia.ui.settings.imagereader.ncnn.isNcnnSupported
 import kotlin.math.roundToInt
 import androidx.compose.material.icons.rounded.Book
 import androidx.compose.material.icons.rounded.Collections
@@ -170,8 +165,6 @@ fun BottomSheetSettingsOverlay(
     onStretchToFitChange: (Boolean) -> Unit,
     cropBorders: Boolean,
     onCropBordersChange: (Boolean) -> Unit,
-    invertSpeechBubbles: Boolean,
-    onInvertSpeechBubblesChange: (Boolean) -> Unit,
     webtoonSmartScroll: Boolean,
     onWebtoonSmartScrollChange: (Boolean) -> Unit,
     loadThumbnailPreviews: Boolean,
@@ -192,9 +185,7 @@ fun BottomSheetSettingsOverlay(
 
     pagedReaderState: PagedReaderState,
     continuousReaderState: ContinuousReaderState,
-    panelsReaderState: PanelsReaderState?,
     commonReaderState: ReaderState,
-    ncnnSettingsState: NcnnSettingsState,
     onBackPress: () -> Unit,
     onNotesClick: () -> Unit = {},
 ) {
@@ -204,7 +195,6 @@ fun BottomSheetSettingsOverlay(
     val useNewUI2 = LocalUseNewLibraryUI2.current
     val coroutineScope = rememberCoroutineScope()
     var showSettingsDialog by remember { mutableStateOf(false) }
-    val allUpscaleActivities by ncnnSettingsState.globalUpscaleActivities.collectAsState()
 
     Box(modifier = Modifier.fillMaxSize()) {
         if (!useNewUI2) {
@@ -254,9 +244,6 @@ fun BottomSheetSettingsOverlay(
                         }
                     }
                 }
-                AnimatedVisibility(visible = allUpscaleActivities.isNotEmpty()) {
-                    UpscaleActivityIndicator(allUpscaleActivities)
-                }
             }
 
             FloatingActionButton(
@@ -277,8 +264,6 @@ fun BottomSheetSettingsOverlay(
             ReaderFloatingToolbar(
                 readerType = readerType,
                 onReaderTypeChange = onReaderTypeChange,
-                panelsReaderState = panelsReaderState,
-                ncnnSettingsState = ncnnSettingsState,
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .windowInsetsPadding(WindowInsets.navigationBars)
@@ -299,7 +284,6 @@ fun BottomSheetSettingsOverlay(
                     (spread.pages.firstOrNull()?.metadata?.pageNumber ?: 1) - 1
                 }
                 CONTINUOUS -> continuousReaderState.currentBookPageIndex.collectAsState(0).value
-                PANELS -> panelsReaderState?.currentPageIndex?.collectAsState()?.value?.page ?: 0
             }
             val showCarousel by commonReaderState.showCarousel.collectAsState()
 
@@ -321,7 +305,6 @@ fun BottomSheetSettingsOverlay(
                         when (readerType) {
                             ReaderType.PAGED -> pagedReaderState.jumpToPage(it)
                             ReaderType.CONTINUOUS -> coroutineScope.launch { continuousReaderState.scrollToBookPage(it + 1) }
-                            ReaderType.PANELS -> panelsReaderState?.jumpToPage(it)
                         }
                     },
                     onCarouselPageChange = {
@@ -332,14 +315,11 @@ fun BottomSheetSettingsOverlay(
                         when (readerType) {
                             ReaderType.PAGED -> pagedReaderState.jumpToPage(it)
                             ReaderType.CONTINUOUS -> coroutineScope.launch { continuousReaderState.scrollToBookPage(it + 1) }
-                            ReaderType.PANELS -> panelsReaderState?.jumpToPage(it)
                         }
                     },
                     loadThumbnailPreviews = loadThumbnailPreviews,
                     readerType = readerType,
                     onReaderTypeChange = onReaderTypeChange,
-                    panelsReaderState = panelsReaderState,
-                    ncnnSettingsState = ncnnSettingsState,
                     ocrSettings = commonReaderState.ocrSettings.collectAsState().value,
                     onOcrSettingsChange = commonReaderState::onOcrSettingsChange,
                     isOcrLoading = commonReaderState.isOcrLoading.collectAsState().value,
@@ -349,7 +329,6 @@ fun BottomSheetSettingsOverlay(
                         val currentImage = when (readerType) {
                             PAGED -> pagedReaderState.currentSpread.value.pages.firstOrNull()?.imageResult?.image
                             CONTINUOUS -> null // TODO
-                            PANELS -> panelsReaderState?.currentPage?.value?.imageResult?.image
                         }
                         currentImage?.let { commonReaderState.scanCurrentPageForText(it) }
                     },
@@ -479,7 +458,6 @@ fun BottomSheetSettingsOverlay(
                                     onReaderTypeChange = onReaderTypeChange,
                                     pagedReaderState = pagedReaderState,
                                     continuousReaderState = continuousReaderState,
-                                    panelsReaderState = panelsReaderState,
                                     keepProgressBarVisible = commonReaderState
                                         .keepProgressBarVisibleWhileReading.collectAsState().value,
                                     onKeepProgressBarVisibleChange =
@@ -496,7 +474,6 @@ fun BottomSheetSettingsOverlay(
                                 readerType = readerType,
                                 pagedReaderState = pagedReaderState,
                                 continuousReaderState = continuousReaderState,
-                                panelsReaderState = panelsReaderState,
                                 availableUpsamplingModes = availableUpsamplingModes,
                                 upsamplingMode = upsamplingMode,
                                 onUpsamplingModeChange = onUpsamplingModeChange,
@@ -509,8 +486,6 @@ fun BottomSheetSettingsOverlay(
                                 onStretchToFitChange = onStretchToFitChange,
                                 cropBorders = cropBorders,
                                 onCropBordersChange = onCropBordersChange,
-                                invertSpeechBubbles = invertSpeechBubbles,
-                                onInvertSpeechBubblesChange = onInvertSpeechBubblesChange,
                                 webtoonSmartScroll = webtoonSmartScroll,
                                 onWebtoonSmartScrollChange = onWebtoonSmartScrollChange,
                                 loadThumbnailPreviews = loadThumbnailPreviews,
@@ -526,7 +501,6 @@ fun BottomSheetSettingsOverlay(
                                 onFlashWithChange = onFlashWithChange,
                                 flashDuration = flashDuration,
                                 onFlashDurationChange = onFlashDurationChange,
-                                ncnnSettingsState = ncnnSettingsState,
                             )
 
                             3 -> OcrModeSettings(
@@ -547,7 +521,6 @@ private fun BottomSheetReadingModeSettings(
     onReaderTypeChange: (ReaderType) -> Unit,
     pagedReaderState: PagedReaderState,
     continuousReaderState: ContinuousReaderState,
-    panelsReaderState: PanelsReaderState?,
     keepProgressBarVisible: Boolean,
     onKeepProgressBarVisibleChange: (Boolean) -> Unit,
 ) {
@@ -566,18 +539,10 @@ private fun BottomSheetReadingModeSettings(
                 colors = accentInputChipColors(),
                 label = { Text(LocalStrings.current.ui.continuous) }
             )
-            if (panelsReaderState != null)
-                InputChip(
-                    selected = readerType == PANELS,
-                    onClick = { onReaderTypeChange(PANELS) },
-                    colors = accentInputChipColors(),
-                    label = { Text(LocalStrings.current.ui.panels) }
-                )
         }
 
         when (readerType) {
             PAGED -> PagedModeSettings(pageState = pagedReaderState)
-            PANELS -> if (panelsReaderState != null) PanelsModeSettings(state = panelsReaderState)
             CONTINUOUS -> ContinuousModeSettings(state = continuousReaderState)
         }
 
@@ -743,65 +708,6 @@ private fun PagedModeSettings(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun PanelsModeSettings(
-    state: PanelsReaderState,
-) {
-    val strings = LocalStrings.current.pagedReader
-    val tapToZoom = state.tapToZoom.collectAsState().value
-    val adaptiveBackground = state.adaptiveBackground.collectAsState().value
-    Column {
-
-        val readingDirection = state.readingDirection.collectAsState().value
-        Text(strings.readingDirection)
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            InputChip(
-                selected = readingDirection == PagedReadingDirection.RIGHT_TO_LEFT,
-                onClick = { state.onReadingDirectionChange(PagedReadingDirection.RIGHT_TO_LEFT) },
-                colors = accentInputChipColors(),
-                label = { Text(strings.forReadingDirection(PagedReadingDirection.RIGHT_TO_LEFT)) }
-            )
-            InputChip(
-                selected = readingDirection == PagedReadingDirection.LEFT_TO_RIGHT,
-                onClick = { state.onReadingDirectionChange(PagedReadingDirection.LEFT_TO_RIGHT) },
-                colors = accentInputChipColors(),
-                label = { Text(strings.forReadingDirection(PagedReadingDirection.LEFT_TO_RIGHT)) }
-            )
-        }
-
-        val displayMode = state.fullPageDisplayMode.collectAsState().value
-        Text(LocalStrings.current.ui.showFullPage)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            PanelsFullPageDisplayMode.entries.forEach { mode ->
-                InputChip(
-                    selected = displayMode == mode,
-                    onClick = { state.onFullPageDisplayModeChange(mode) },
-                    colors = accentInputChipColors(),
-                    label = { Text(mode.name) }
-                )
-            }
-        }
-
-        SwitchWithLabel(
-            checked = tapToZoom,
-            onCheckedChange = state::onTapToZoomChange,
-            label = { Text(LocalStrings.current.ui.tapToZoom) },
-            contentPadding = PaddingValues(horizontal = 10.dp),
-        )
-
-        SwitchWithLabel(
-            checked = adaptiveBackground,
-            onCheckedChange = state::onAdaptiveBackgroundChange,
-            label = { Text(strings.adaptiveBackground) },
-            contentPadding = PaddingValues(horizontal = 10.dp),
-        )
-    }
-
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
 private fun ContinuousModeSettings(
     state: ContinuousReaderState,
 ) {
@@ -893,7 +799,6 @@ private fun BottomSheetImageSettings(
     readerType: ReaderType,
     pagedReaderState: PagedReaderState,
     continuousReaderState: ContinuousReaderState,
-    panelsReaderState: PanelsReaderState?,
     availableUpsamplingModes: List<UpsamplingMode>,
     upsamplingMode: UpsamplingMode,
     onUpsamplingModeChange: (UpsamplingMode) -> Unit,
@@ -907,8 +812,6 @@ private fun BottomSheetImageSettings(
     onStretchToFitChange: (Boolean) -> Unit,
     cropBorders: Boolean,
     onCropBordersChange: (Boolean) -> Unit,
-    invertSpeechBubbles: Boolean,
-    onInvertSpeechBubblesChange: (Boolean) -> Unit,
     webtoonSmartScroll: Boolean,
     onWebtoonSmartScrollChange: (Boolean) -> Unit,
     loadThumbnailPreviews: Boolean,
@@ -925,7 +828,6 @@ private fun BottomSheetImageSettings(
     onFlashWithChange: (ReaderFlashColor) -> Unit,
     flashDuration: Long,
     onFlashDurationChange: (Long) -> Unit,
-    ncnnSettingsState: NcnnSettingsState,
 ) {
     Column {
         SamplingModeSettings(
@@ -943,8 +845,6 @@ private fun BottomSheetImageSettings(
             onStretchToFitChange = onStretchToFitChange,
             cropBorders = cropBorders,
             onCropBordersChange = onCropBordersChange,
-            invertSpeechBubbles = invertSpeechBubbles,
-            onInvertSpeechBubblesChange = onInvertSpeechBubblesChange,
             webtoonSmartScroll = webtoonSmartScroll,
             onWebtoonSmartScrollChange = onWebtoonSmartScrollChange,
             loadThumbnailPreviews = loadThumbnailPreviews,
@@ -961,15 +861,6 @@ private fun BottomSheetImageSettings(
             onFlashDurationChange = onFlashDurationChange,
         )
 
-        if (snd.komelia.ui.settings.imagereader.ncnn.isNcnnSupported()) {
-            HorizontalDivider(Modifier.padding(vertical = 10.dp))
-            snd.komelia.ui.settings.imagereader.ncnn.NcnnSettingsContent(
-                settings = ncnnSettingsState.ncnnUpscalerSettings.collectAsState().value,
-                onSettingsChange = ncnnSettingsState::onSettingsChange,
-                onDownloadRequest = ncnnSettingsState::onNcnnDownloadRequest
-            )
-        }
-
         HorizontalDivider(Modifier.padding(vertical = 5.dp))
 
         val strings = LocalStrings.current.reader
@@ -982,19 +873,6 @@ private fun BottomSheetImageSettings(
                     modifier = Modifier.animateContentSize()
                 )
 
-            PANELS -> {
-                if (panelsReaderState != null) {
-                    val panelsPage = panelsReaderState.currentPage.collectAsState().value
-                    val pages = remember(panelsPage) {
-                        panelsPage?.let { listOf(PagedReaderState.Page(it.metadata, it.imageResult)) } ?: emptyList()
-                    }
-                    PagedReaderPagesInfo(
-                        pages = pages,
-                        modifier = Modifier.animateContentSize()
-                    )
-                }
-            }
-
             CONTINUOUS -> ContinuousReaderPagesInfo(
                 lazyListState = continuousReaderState.lazyListState,
                 waitForImage = continuousReaderState::waitForImage,
@@ -1006,40 +884,11 @@ private fun BottomSheetImageSettings(
 }
 
 @Composable
-internal fun UpscaleActivityIndicator(activities: Map<Int, UpscaleStatus>) {
-    if (activities.isEmpty()) return
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.padding(end = 8.dp)
-    ) {
-        activities.entries.sortedBy { it.key }.forEach { (page, status) ->
-            when (status) {
-                UpscaleStatus.Upscaling -> Row(verticalAlignment = Alignment.CenterVertically) {
-                    CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 1.5.dp)
-                    Spacer(Modifier.width(2.dp))
-                    Text("p$page", style = MaterialTheme.typography.labelSmall)
-                    Spacer(Modifier.width(6.dp))
-                }
-                UpscaleStatus.Upscaled -> {
-                    Text("p$page ✓", style = MaterialTheme.typography.labelSmall)
-                    Spacer(Modifier.width(6.dp))
-                }
-                UpscaleStatus.Idle -> {}
-            }
-        }
-    }
-}
-
-@Composable
 private fun ReaderFloatingToolbar(
     readerType: ReaderType,
     onReaderTypeChange: (ReaderType) -> Unit,
-    panelsReaderState: PanelsReaderState?,
-    ncnnSettingsState: NcnnSettingsState,
     modifier: Modifier = Modifier,
 ) {
-    val ncnnSettings by ncnnSettingsState.ncnnUpscalerSettings.collectAsState()
-    val showUpscale = isNcnnSupported()
 
     Surface(
         shape = CircleShape,
@@ -1064,28 +913,6 @@ private fun ReaderFloatingToolbar(
                 icon = Icons.Rounded.ViewStream,
                 contentDescription = LocalStrings.current.ui.continuous,
             )
-            if (panelsReaderState != null) {
-                ReaderModeIconButton(
-                    selected = readerType == PANELS,
-                    onClick = { onReaderTypeChange(PANELS) },
-                    icon = Icons.Rounded.GridView,
-                    contentDescription = LocalStrings.current.ui.panels,
-                )
-            }
-
-            if (showUpscale) {
-                VerticalDivider(
-                    modifier = Modifier
-                        .height(24.dp)
-                        .padding(horizontal = 4.dp)
-                )
-                ReaderModeIconButton(
-                    selected = ncnnSettings.enabled,
-                    onClick = { ncnnSettingsState.onSettingsChange(ncnnSettings.copy(enabled = !ncnnSettings.enabled)) },
-                    icon = Icons.Rounded.AutoAwesome,
-                    contentDescription = LocalStrings.current.ui.upscaling,
-                )
-            }
         }
     }
 }
@@ -1136,8 +963,6 @@ fun ImageReaderControlsCardNewUI(
     loadThumbnailPreviews: Boolean,
     readerType: ReaderType,
     onReaderTypeChange: (ReaderType) -> Unit,
-    panelsReaderState: PanelsReaderState?,
-    ncnnSettingsState: NcnnSettingsState,
     ocrSettings: OcrSettings,
     onOcrSettingsChange: (OcrSettings) -> Unit,
     isOcrLoading: Boolean,
@@ -1156,8 +981,6 @@ fun ImageReaderControlsCardNewUI(
     modifier: Modifier = Modifier,
 ) {
     val accentColor = LocalAccentColor.current
-    val ncnnSettings by ncnnSettingsState.ncnnUpscalerSettings.collectAsState()
-    val showUpscale = isNcnnSupported()
 
     ReaderControlsCard(
         modifier = modifier,
@@ -1266,34 +1089,10 @@ fun ImageReaderControlsCardNewUI(
                             icon = Icons.Rounded.ViewStream,
                             contentDescription = LocalStrings.current.ui.continuous,
                         )
-                        if (panelsReaderState != null) {
-                            ReaderModeIconButton(
-                                selected = readerType == PANELS,
-                                onClick = { onReaderTypeChange(PANELS) },
-                                icon = Icons.Rounded.GridView,
-                                contentDescription = LocalStrings.current.ui.panels,
-                            )
-                        }
-
                         VerticalDivider(
                             modifier = Modifier
                                 .height(24.dp)
                         )
-
-                        if (showUpscale) {
-                            ReaderModeIconButton(
-                                selected = ncnnSettings.enabled,
-                                onClick = {
-                                    ncnnSettingsState.onSettingsChange(
-                                        ncnnSettings.copy(
-                                            enabled = !ncnnSettings.enabled
-                                        )
-                                    )
-                                },
-                                icon = Icons.Rounded.AutoAwesome,
-                                contentDescription = LocalStrings.current.ui.upscaling,
-                            )
-                        }
 
                         if (LocalPlatform.current == MOBILE) {
                             if (isOcrLoading) {

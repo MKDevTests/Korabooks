@@ -44,8 +44,6 @@ import snd.komelia.backup.BackupService
 import snd.komelia.http.RememberMePersistingCookieStore
 import snd.komelia.image.BookImageLoader
 import snd.komelia.image.KomeliaImageDecoder
-import snd.komelia.image.KomeliaPanelDetector
-import snd.komelia.image.KomeliaUpscaler
 import snd.komelia.image.ReaderImageFactory
 import snd.komelia.image.coil.CoilAwareDecoder
 import snd.komelia.image.coil.CoilDecoder
@@ -62,7 +60,6 @@ import snd.komelia.offline.OfflineDependencies
 import snd.komelia.offline.OfflineModule
 import snd.komelia.offline.OfflineRepositories
 import snd.komelia.offline.book.repository.OfflineBookRepository
-import snd.komelia.onnxruntime.OnnxRuntime
 import snd.komelia.settings.ImageReaderSettingsRepository
 import snd.komelia.stats.withStatsTracking
 import snd.komelia.ignore.withIgnoreFilter
@@ -70,8 +67,6 @@ import snd.komelia.hidden.HiddenSeriesController
 import snd.komelia.ui.DependencyContainer
 import snd.komelia.ui.strings.EnStrings
 import snd.komelia.updates.AppUpdater
-import snd.komelia.updates.OnnxModelDownloader
-import snd.komelia.updates.OnnxRuntimeInstaller
 import snd.komelia.updates.RapidOcrModelDownloader
 import snd.komelia.updates.UpdateClient
 import snd.komga.client.KomgaClientFactory
@@ -82,13 +77,6 @@ import kotlin.time.measureTimedValue
 import snd.komelia.sync.ReaderSyncService
 
 private val logger = KotlinLogging.logger { }
-
-/**
- * Filename of the speech-bubble detector inside the ONNX models directory
- * (ogkalu/comic-text-and-bubble-detector, RT-DETR, Apache-2.0, ~11 MB).
- * Absent = bubble inversion silently stays off.
- */
-const val BUBBLE_DETECTOR_MODEL = "comic-bubble-detector.onnx"
 
 abstract class AppModule(
     val serverId: Long? = null
@@ -285,29 +273,8 @@ abstract class AppModule(
             colorCorrectionStep = colorCorrectionStep,
             autoSkipBlankPages = appRepositories.imageReaderSettingsRepository.getPagedAutoSkipBlankPages().stateIn(initScope),
             blankPageDetector = blankPageDetector,
-            invertSpeechBubbles = appRepositories.imageReaderSettingsRepository.getInvertSpeechBubbles(),
         )
-        val onnxRuntimeInstaller = createOnnxRuntimeInstaller(updateClient)
-        val onnxModelDownloader = createOnnxModelDownloader(updateClient)
         val rapidOcrModelDownloader = createRapidOcrModelDownloader(updateClient)
-        val onnxRuntime = createOnnxRuntime()
-
-        val upscaler = if (onnxRuntime != null && onnxModelDownloader != null) {
-            createUpscaler(
-                onnxRuntime,
-                onnxModelDownloader,
-                appRepositories.imageReaderSettingsRepository
-            )
-        } else null
-
-        val panelDetector = if (onnxRuntime != null && onnxModelDownloader != null) {
-            createPanelDetector(
-                onnxRuntime,
-                onnxModelDownloader,
-                appRepositories.imageReaderSettingsRepository
-            )
-        } else null
-
         val localFileApiProvider = createLocalFileApiProvider()?.withStatsTracking(
             readingEvents = appRepositories.readingEventsRepository,
             statsEnabled = statsEnabledFlow,
@@ -346,8 +313,6 @@ abstract class AppModule(
             imageDecoder = imageDecoder,
             pipeline = imagePipeline,
             settings = appRepositories.imageReaderSettingsRepository,
-            onnxRuntimeUpscaler = upscaler,
-            onnxModelDownloader = onnxModelDownloader
         )
 
         return DependencyContainer(
@@ -397,12 +362,7 @@ abstract class AppModule(
             windowState = createWindowState(),
             colorCorrectionStep = colorCorrectionStep,
             blankPageDetector = blankPageDetector,
-            onnxRuntimeInstaller = onnxRuntimeInstaller,
-            onnxModelDownloader = onnxModelDownloader,
             rapidOcrModelDownloader = rapidOcrModelDownloader,
-            onnxRuntime = onnxRuntime,
-            upscaler = upscaler,
-            panelDetector = panelDetector,
             offlineDependencies = offlineModule,
             nextBookService = snd.komelia.nextbook.NextBookService(komgaApi),
             toolkitApi = snd.komelia.toolkit.ToolkitApi(ktor, createToolkitConfigProvider()),
@@ -561,21 +521,12 @@ abstract class AppModule(
         colorCorrectionStep: ColorCorrectionStep,
         autoSkipBlankPages: StateFlow<Boolean>,
         blankPageDetector: snd.komelia.image.processing.BlankPageDetector,
-        invertSpeechBubbles: Flow<Boolean>,
     ): ImageProcessingPipeline {
         val pipeline = ImageProcessingPipeline()
         pipeline.addStep(colorCorrectionStep)
 
         pipeline.addStep(CropBordersStep(cropBorders, autoSkipBlankPages, blankPageDetector))
         pipeline.addStep(SplitPageStep())
-        // MUST stay last: on Android this hands back a Bitmap-backed image, and
-        // AndroidBitmapBackedImage.mapLookupTable throws — so it has to run after
-        // ColorCorrectionStep, the only step that calls it.
-        pipeline.addStep(
-            snd.komelia.image.processing.BubbleInvertStep(invertSpeechBubbles) {
-                getOnnxModelsDirectoryPath()?.let { "$it/$BUBBLE_DETECTOR_MODEL" }
-            }
-        )
         return pipeline
     }
 
@@ -610,35 +561,11 @@ abstract class AppModule(
         imageDecoder: KomeliaImageDecoder,
         pipeline: ImageProcessingPipeline,
         settings: ImageReaderSettingsRepository,
-        onnxRuntimeUpscaler: KomeliaUpscaler?,
-        onnxModelDownloader: OnnxModelDownloader?,
     ): ReaderImageFactory
 
     protected abstract fun createWindowState(): AppWindowState
     protected abstract fun createCoilContext(): PlatformContext
-    protected abstract fun createOnnxRuntimeInstaller(updateClient: UpdateClient): OnnxRuntimeInstaller?
-    protected abstract fun createOnnxModelDownloader(updateClient: UpdateClient): OnnxModelDownloader?
     protected abstract fun createRapidOcrModelDownloader(updateClient: UpdateClient): RapidOcrModelDownloader?
-    protected abstract fun createOnnxRuntime(): OnnxRuntime?
-    protected abstract suspend fun createUpscaler(
-        onnxRuntime: OnnxRuntime,
-        modelDownloader: OnnxModelDownloader,
-        settings: ImageReaderSettingsRepository,
-    ): KomeliaUpscaler?
-
-    protected abstract suspend fun createPanelDetector(
-        onnxRuntime: OnnxRuntime,
-        modelDownloader: OnnxModelDownloader,
-        settings: ImageReaderSettingsRepository,
-    ): KomeliaPanelDetector?
-
-    /**
-     * Directory holding downloaded ONNX models (the panel detector lives here
-     * too), or null on platforms that don't ship them. Used to locate the
-     * speech-bubble detector; a missing file just disables bubble inversion.
-     */
-    protected open fun getOnnxModelsDirectoryPath(): String? = null
-
     protected abstract fun getCoilCacheDirectory(): Path?
     protected abstract fun createCoilMemoryCache(): MemoryCache?
     protected abstract fun getReaderCacheDirectory(): Path?

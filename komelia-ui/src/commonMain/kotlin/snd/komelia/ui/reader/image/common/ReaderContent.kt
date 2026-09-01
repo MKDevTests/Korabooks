@@ -53,7 +53,6 @@ import snd.komelia.settings.model.ReaderTapNavigationMode
 import snd.komelia.settings.model.ReaderType
 import snd.komelia.settings.model.ReaderType.CONTINUOUS
 import snd.komelia.settings.model.ReaderType.PAGED
-import snd.komelia.settings.model.ReaderType.PANELS
 import snd.komelia.ui.LocalHazeState
 import snd.komelia.ui.LocalPlatform
 import snd.komelia.ui.LocalTheme
@@ -73,11 +72,7 @@ import snd.komelia.ui.reader.image.continuous.ContinuousReaderContent
 import snd.komelia.ui.reader.image.continuous.ContinuousReaderState
 import snd.komelia.ui.reader.image.paged.PagedReaderContent
 import snd.komelia.ui.reader.image.paged.PagedReaderState
-import snd.komelia.ui.reader.image.panels.PanelsReaderContent
-import snd.komelia.ui.reader.image.panels.PanelsReaderState
 import snd.komelia.ui.reader.image.settings.SettingsOverlay
-import snd.komelia.ui.settings.imagereader.ncnn.NcnnSettingsState
-import snd.komelia.ui.settings.imagereader.onnxruntime.OnnxRuntimeSettingsState
 import snd.komelia.ui.LocalStrings
 
 @Composable
@@ -85,9 +80,6 @@ fun ReaderContent(
     commonReaderState: ReaderState,
     pagedReaderState: PagedReaderState,
     continuousReaderState: ContinuousReaderState,
-    panelsReaderState: PanelsReaderState?,
-    onnxRuntimeSettingsState: OnnxRuntimeSettingsState?,
-    ncnnSettingsState: NcnnSettingsState,
     screenScaleState: ScreenScaleState,
 
     isColorCorrectionActive: Boolean,
@@ -263,27 +255,6 @@ fun ReaderContent(
                             )
                         }
 
-                        PANELS -> {
-                            check(panelsReaderState != null)
-                            PanelsReaderContent(
-                                showHelpDialog = showHelpDialog,
-                                onShowHelpDialogChange = { showHelpDialog = it },
-                                showSettingsMenu = showSettingsMenu,
-                                onShowSettingsMenuChange = { showSettingsMenu = it },
-                                screenScaleState = screenScaleState,
-                                panelsReaderState = panelsReaderState,
-                                volumeKeysNavigation = volumeKeysNavigation,
-                                tapNavigationMode = tapNavigationMode,
-                                onLongPress = onLongPress,
-                                onAddNote = { text, page, x, y ->
-                                    commonReaderState.pendingAnnotationPage.value = page
-                                    commonReaderState.pendingAnnotationX.value = x
-                                    commonReaderState.pendingAnnotationY.value = y
-                                    commonReaderState.pendingAnnotationNote.value = text
-                                    commonReaderState.showAnnotationDialog.value = true
-                                }
-                            )
-                        }
                     }
                 }
 
@@ -306,7 +277,6 @@ fun ReaderContent(
                                     val currentImage = when (readerType) {
                                         PAGED -> pagedReaderState.currentSpread.value.pages.firstOrNull()?.imageResult?.image
                                         CONTINUOUS -> null // TODO
-                                        PANELS -> panelsReaderState?.currentPage?.value?.imageResult?.image
                                     }
                                     currentImage?.let { commonReaderState.scanCurrentPageForText(it) }
                                 }
@@ -347,9 +317,6 @@ fun ReaderContent(
                     commonReaderState = commonReaderState,
                     pagedReaderState = pagedReaderState,
                     continuousReaderState = continuousReaderState,
-                    panelsReaderState = panelsReaderState,
-                    onnxRuntimeSettingsState = onnxRuntimeSettingsState,
-                    ncnnSettingsState = ncnnSettingsState,
                     screenScaleState = screenScaleState,
                     isColorCorrectionsActive = isColorCorrectionActive,
                     onColorCorrectionClick = onColorCorrectionClick,
@@ -362,14 +329,12 @@ fun ReaderContent(
                     val book = commonReaderState.booksState.collectAsState().value?.currentBook
                     val series = commonReaderState.series.collectAsState().value
                     val totalBooks = series?.metadata?.totalBookCount ?: series?.booksCount
-                    val allUpscaleActivities by ncnnSettingsState.globalUpscaleActivities.collectAsState()
                     ReaderTopBar(
                         seriesTitle = book?.seriesTitle ?: "",
                         bookNumber = book?.number ?: 0,
                         seriesBookCount = totalBooks,
                         bookTitle = book?.metadata?.title.orEmpty(),
                         onBack = onExit,
-                        upscaleActivities = allUpscaleActivities,
                         modifier = Modifier.align(Alignment.TopCenter)
                     )
                 }
@@ -380,7 +345,6 @@ fun ReaderContent(
                         val currentIdx = when (readerType) {
                             PAGED -> pagedReaderState.currentSpreadIndex.value
                             CONTINUOUS -> commonReaderState.readProgressPage.value - 1
-                            PANELS -> panelsReaderState?.currentPageIndex?.value?.page ?: 0
                         }
                         val entry = commonReaderState.navigationHistory.popEntry()
                         if (entry != null && entry.location is ImagePageLocation) {
@@ -395,7 +359,6 @@ fun ReaderContent(
                                     continuousReaderState.scrollToBookPage(targetPage + 1)
                                 }
 
-                                PANELS -> panelsReaderState?.jumpToPage(targetPage)
                             }
                         }
                     },
@@ -426,7 +389,6 @@ fun ReaderContent(
                                 val currentIdx = when (readerType) {
                                     PAGED -> pagedReaderState.currentSpreadIndex.value
                                     CONTINUOUS -> commonReaderState.readProgressPage.value - 1
-                                    PANELS -> panelsReaderState?.currentPageIndex?.value?.page ?: 0
                                 }
                                 commonReaderState.navigationHistory.addEntry(
                                     NavigationSource.NOTES,
@@ -439,7 +401,6 @@ fun ReaderContent(
                                         continuousReaderState.scrollToBookPage(loc.page + 1)
                                     }
 
-                                    PANELS -> panelsReaderState?.jumpToPage(loc.page)
                                 }
                             }
                             commonReaderState.editingComicAnnotation.value = annotation
@@ -513,7 +474,6 @@ fun ReaderContent(
                                     val currentIdx = when (readerType) {
                                         PAGED -> pagedReaderState.currentSpreadIndex.value
                                         CONTINUOUS -> commonReaderState.readProgressPage.value - 1
-                                        PANELS -> panelsReaderState?.currentPageIndex?.value?.page ?: 0
                                     }
                                     commonReaderState.navigationHistory.addEntry(
                                         NavigationSource.NOTES,
@@ -530,7 +490,6 @@ fun ReaderContent(
                                             }
 
                                             CONTINUOUS -> continuousReaderState.scrollToBookPage(loc.page + 1)
-                                            PANELS -> panelsReaderState?.jumpToPage(loc.page)
                                         }
                                     }
                                 }
@@ -544,7 +503,6 @@ fun ReaderContent(
                                     val currentIdx = when (readerType) {
                                         PAGED -> pagedReaderState.currentSpreadIndex.value
                                         CONTINUOUS -> commonReaderState.readProgressPage.value - 1
-                                        PANELS -> panelsReaderState?.currentPageIndex?.value?.page ?: 0
                                     }
                                     commonReaderState.navigationHistory.addEntry(
                                         NavigationSource.NOTES,
@@ -561,7 +519,6 @@ fun ReaderContent(
                                             }
 
                                             CONTINUOUS -> continuousReaderState.scrollToBookPage(loc.page + 1)
-                                            PANELS -> panelsReaderState?.jumpToPage(loc.page)
                                         }
                                     }
                                 }

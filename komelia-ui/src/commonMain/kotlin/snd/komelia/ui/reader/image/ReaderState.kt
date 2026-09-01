@@ -123,12 +123,6 @@ class ReaderState(
     val pageChangeFlow: SharedFlow<Unit>,
     private val imageLoader: BookImageLoader,
     private val ocrService: OcrService,
-    /**
-     * Whether the ONNX panel detector is loaded and usable. When false, webtoon
-     * routing falls back to CONTINUOUS instead of PANELS (PANELS needs the
-     * detector to render — without it the reader would collapse to PAGED).
-     */
-    private val panelsAvailable: () -> Boolean,
 ) {
     val navigationHistory = NavigationHistory()
     private val currentSyncBlob = MutableStateFlow<String?>(null)
@@ -175,7 +169,6 @@ class ReaderState(
     private var userOverrodeReaderType: Boolean = false
     val imageStretchToFit = MutableStateFlow(true)
     val cropBorders = MutableStateFlow(false)
-    val invertSpeechBubbles = MutableStateFlow(false)
     val webtoonSmartScroll = MutableStateFlow(true)
     val loadThumbnailPreviews = MutableStateFlow(true)
     val showCarousel = MutableStateFlow(false)
@@ -255,7 +248,6 @@ class ReaderState(
 
         imageStretchToFit.value = readerSettingsRepository.getStretchToFit().first()
         cropBorders.value = readerSettingsRepository.getCropBorders().first()
-        invertSpeechBubbles.value = readerSettingsRepository.getInvertSpeechBubbles().first()
         webtoonSmartScroll.value = readerSettingsRepository.getWebtoonSmartScroll().first()
         loadThumbnailPreviews.value = readerSettingsRepository.getLoadThumbnailPreviews().first()
         flashOnPageChange.value = readerSettingsRepository.getFlashOnPageChange().first()
@@ -404,11 +396,8 @@ class ReaderState(
             when (currentSeries.metadata.readingDirection) {
                 KomgaReadingDirection.LEFT_TO_RIGHT -> ReaderType.PAGED
                 KomgaReadingDirection.RIGHT_TO_LEFT -> ReaderType.PAGED
-                // Webtoons read best in PANELS mode (auto-zoom on each detected
-                // panel). But PANELS needs the ONNX panel detector to render;
-                // when it isn't loaded, fall back to CONTINUOUS (vertical
-                // scroll) rather than PANELS — otherwise the reader collapses to
-                // PAGED, which is the worst option for a tall strip.
+                // Webtoons read in CONTINUOUS (vertical scroll) — PAGED is the
+                // worst option for a tall strip.
                 KomgaReadingDirection.WEBTOON -> webtoonReaderType()
                 KomgaReadingDirection.VERTICAL, null -> readerSettingsRepository.getReaderType().first()
             }
@@ -421,8 +410,7 @@ class ReaderState(
         //  - the setting is ON
         //  - the user hasn't manually flipped readerType already this session
         //  - the first-5-pages heuristic (>=3 tall) classifies it as a webtoon
-        // Same fallback as the metadata branch above: PANELS when the detector
-        // is loaded, otherwise CONTINUOUS.
+        // Same routing as the metadata branch above: CONTINUOUS.
         val autoDetectOn = readerSettingsRepository.getPagedAutoDetectWebtoon().first()
         val pages = booksState.value?.currentBookPages ?: emptyList()
         if (!userOverrodeReaderType && autoDetectOn && isWebtoonLikely(pages)) {
@@ -434,12 +422,7 @@ class ReaderState(
     /**
      * Webtoons always read in CONTINUOUS.
      *
-     * PANELS is deliberately NOT used here any more: on a tall strip its panel
-     * ordering falls apart — reading starts mid- or end-of-page and skips 4-5
-     * image zones (the same ordering weakness measured at ~13% of normal manga
-     * pages, amplified by strip geometry). Plain vertical scrolling is strictly
-     * better for the format. PAGED is never an option either: a tall strip in
-     * paged mode is unreadable.
+     * PAGED is never an option: a tall strip in paged mode is unreadable.
      *
      * [webtoonSmartScroll] therefore no longer picks the reader type; it selects
      * how a screen tap advances (currently a fixed ~80% of the viewport, soon a
@@ -732,13 +715,6 @@ class ReaderState(
     fun onCropBordersChange(trim: Boolean) {
         cropBorders.value = trim
         stateScope.launch { readerSettingsRepository.putCropBorders(trim) }
-    }
-
-    fun onInvertSpeechBubblesChange(invert: Boolean) {
-        invertSpeechBubbles.value = invert
-        // The pipeline's BubbleInvertStep observes the repository flow, so the
-        // write is what actually re-runs processing on the visible pages.
-        stateScope.launch { readerSettingsRepository.putInvertSpeechBubbles(invert) }
     }
 
     fun onWebtoonSmartScrollChange(enabled: Boolean) {

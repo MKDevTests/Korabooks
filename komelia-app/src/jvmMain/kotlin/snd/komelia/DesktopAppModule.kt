@@ -14,7 +14,6 @@ import kotlinx.io.files.Path
 import okhttp3.Cache
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
-import snd.komelia.AppDirectories.onnxRuntimeWorkingDir
 import snd.komelia.db.AppSettings
 import snd.komelia.db.EpubReaderSettings
 import snd.komelia.db.ExposedTransactionTemplate
@@ -60,12 +59,8 @@ import snd.komelia.db.settings.ExposedKomfSettingsRepository
 import snd.komelia.db.settings.ExposedSettingsRepository
 import snd.komelia.homefilters.homeScreenDefaultFilters
 import snd.komelia.http.komeliaUserAgent
-import snd.komelia.image.DesktopOnnxRuntimeUpscaler
-import snd.komelia.image.DesktopPanelDetector
 import snd.komelia.image.DesktopReaderImageFactory
 import snd.komelia.image.KomeliaImageDecoder
-import snd.komelia.image.KomeliaPanelDetector
-import snd.komelia.image.KomeliaUpscaler
 import snd.komelia.image.ReaderImageFactory
 import snd.komelia.image.SkiaBitmap
 import snd.komelia.image.UpsamplingMode
@@ -75,23 +70,11 @@ import snd.komelia.image.processing.ImageProcessingPipeline
 import snd.komelia.offline.DesktopOfflineModule
 import snd.komelia.offline.OfflineModule
 import snd.komelia.offline.OfflineRepositories
-import snd.komelia.onnxruntime.JvmOnnxRuntime
-import snd.komelia.onnxruntime.JvmOnnxRuntimeRfDetr
-import snd.komelia.onnxruntime.JvmOnnxRuntimeUpscaler
-import snd.komelia.onnxruntime.OnnxRuntime
-import snd.komelia.onnxruntime.OnnxRuntimeExecutionProvider.CPU
-import snd.komelia.onnxruntime.OnnxRuntimeExecutionProvider.CUDA
-import snd.komelia.onnxruntime.OnnxRuntimeExecutionProvider.DirectML
-import snd.komelia.onnxruntime.OnnxRuntimeExecutionProvider.TENSOR_RT
-import snd.komelia.onnxruntime.OnnxRuntimeSharedLibraries
 import snd.komelia.secrets.AppKeyring
 import snd.komelia.settings.ImageReaderSettingsRepository
 import snd.komelia.settings.KeyringSecretsRepository
 import snd.komelia.ui.error.NonRestartableException
 import snd.komelia.updates.DesktopAppUpdater
-import snd.komelia.updates.DesktopOnnxModelDownloader
-import snd.komelia.updates.DesktopOnnxRuntimeInstaller
-import snd.komelia.updates.OnnxModelDownloader
 import snd.komelia.updates.RapidOcrModelDownloader
 import snd.komelia.updates.UpdateClient
 import snd.komga.client.KomgaClientFactory
@@ -132,7 +115,6 @@ class DesktopAppModule(
             loadWebviewLibraries()
         }
         checkVipsLibraries()
-        loadOnnxRuntimeLibraries()
     }
 
 
@@ -144,12 +126,6 @@ class DesktopAppModule(
             throw NonRestartableException("libvips shared libraries were not loaded. libvips is required for image decoding")
         SkiaBitmap.load()
     }
-
-    private fun loadOnnxRuntimeLibraries() {
-        runCatching { OnnxRuntimeSharedLibraries.load() }
-            .onFailure { logger.error(it) { "Couldn't load ONNX Runtime" } }
-    }
-
 
     override suspend fun createAppRepositories(
         currentUserId: kotlinx.coroutines.flow.StateFlow<snd.komga.client.user.KomgaUserId?>,
@@ -298,8 +274,6 @@ class DesktopAppModule(
         imageDecoder: KomeliaImageDecoder,
         pipeline: ImageProcessingPipeline,
         settings: ImageReaderSettingsRepository,
-        onnxRuntimeUpscaler: KomeliaUpscaler?,
-        onnxModelDownloader: OnnxModelDownloader?,
     ): ReaderImageFactory {
         return DesktopReaderImageFactory(
             imageDecoder = imageDecoder,
@@ -308,7 +282,6 @@ class DesktopAppModule(
             linearLightDownSampling = settings.getLinearLightDownsampling().stateIn(initScope),
             processingPipeline = pipeline,
             stretchImages = settings.getStretchToFit().stateIn(initScope),
-            onnxUpscaler = onnxRuntimeUpscaler,
         )
     }
 
@@ -316,62 +289,7 @@ class DesktopAppModule(
 
     override fun createCoilContext() = PlatformContext.INSTANCE
 
-    override fun createOnnxRuntimeInstaller(updateClient: UpdateClient) = DesktopOnnxRuntimeInstaller(updateClient)
-
-    override fun createOnnxModelDownloader(updateClient: UpdateClient) =
-        DesktopOnnxModelDownloader(updateClient, appNotifications)
-
-
     override fun createRapidOcrModelDownloader(updateClient: UpdateClient): RapidOcrModelDownloader? = null
-
-    override fun createOnnxRuntime(): OnnxRuntime? {
-        if (!OnnxRuntimeSharedLibraries.isAvailable) {
-            logger.warn { "OnnxRuntime is not available" }
-            return null
-        }
-        onnxRuntimeWorkingDir.createDirectories()
-        return JvmOnnxRuntime.create(onnxRuntimeWorkingDir.toString())
-    }
-
-    override suspend fun createUpscaler(
-        onnxRuntime: OnnxRuntime,
-        modelDownloader: OnnxModelDownloader,
-        settings: ImageReaderSettingsRepository,
-    ): KomeliaUpscaler {
-        val upscaler = JvmOnnxRuntimeUpscaler.create(onnxRuntime as JvmOnnxRuntime)
-        return DesktopOnnxRuntimeUpscaler(
-            settingsRepository = settings,
-            executionProvider = OnnxRuntimeSharedLibraries.executionProvider,
-            ortUpscaler = upscaler,
-            updateFlow = modelDownloader.downloadCompletionEvents.filterIsInstance()
-        ).also {
-            it.initialize()
-            Runtime.getRuntime().addShutdownHook(thread(start = false) { it.clearCache() })
-        }
-    }
-
-    override suspend fun createPanelDetector(
-        onnxRuntime: OnnxRuntime,
-        modelDownloader: OnnxModelDownloader,
-        settings: ImageReaderSettingsRepository,
-    ): KomeliaPanelDetector {
-        val rfDetr = JvmOnnxRuntimeRfDetr.create(onnxRuntime as JvmOnnxRuntime)
-        val provider = when (OnnxRuntimeSharedLibraries.executionProvider) {
-            TENSOR_RT -> CUDA // TRT is broken. fallback to cuda
-            DirectML -> CPU // DirectML is broken. fallback to cpu
-            else -> OnnxRuntimeSharedLibraries.executionProvider
-        }
-        val detector = DesktopPanelDetector(
-            rfDetr = rfDetr,
-            executionProvider = provider,
-            deviceId = settings.getOnnxRuntimeDeviceId().stateIn(initScope),
-            updateFlow = modelDownloader.downloadCompletionEvents.filterIsInstance()
-
-        )
-        detector.initialize()
-
-        return detector
-    }
 
     override fun getCoilCacheDirectory(): Path {
         val path = AppDirectories.coilCachePath

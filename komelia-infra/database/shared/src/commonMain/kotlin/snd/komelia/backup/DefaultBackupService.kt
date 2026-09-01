@@ -77,11 +77,7 @@ class DefaultBackupService(
 
     override suspend fun exportToJson(): String {
         val app = appSettings.state.value.sanitizedForExport()
-        // ortUpscalerUserModelPath is a PlatformFile pointing at a local
-        // ONNX model. After a re-install the path is almost certainly
-        // invalid, and PlatformFile's wire format may not survive a
-        // cross-device move, so we don't round-trip it.
-        val image = imageReader.state.value.copy(ortUpscalerUserModelPath = null)
+        val image = imageReader.state.value
         val epub = epubReader.state.value
         val komfValue = komf.state.value
         val home = homeFilters.state.value
@@ -407,16 +403,11 @@ class DefaultBackupService(
 
         sections.imageReaderSettings?.let { incoming ->
             runCatching {
-                imageReader.transform { current ->
-                    // Backups strip ortUpscalerUserModelPath (local file path).
-                    // If the incoming has null but the user has a path set
-                    // locally, keep theirs — otherwise nuking it on every
-                    // import would silently break their custom upscaler.
-                    incoming.copy(
-                        ortUpscalerUserModelPath = incoming.ortUpscalerUserModelPath
-                            ?: current.ortUpscalerUserModelPath
-                    )
-                }
+                // Nothing to merge any more: the one field that had to survive
+                // an import — a local path to an upscaler model — went with the
+                // upscaler. Old backups still carry it and are still readable:
+                // the bundle decodes with ignoreUnknownKeys.
+                imageReader.transform { incoming }
                 restored.add("Image reader settings")
             }.onFailure { return ImportResult.Failure("Failed to restore Image reader settings: ${it.message}") }
         }

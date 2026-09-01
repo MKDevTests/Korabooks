@@ -38,7 +38,6 @@ kotlin {
             api(projects.komeliaDomain.offline)
             api(projects.komeliaInfra.database.transaction)
             api(projects.komeliaInfra.imageDecoder.shared)
-            api(projects.komeliaInfra.onnxruntime.api)
 
             implementation(libs.kotlin.logging)
             implementation(libs.kotlinx.datetime)
@@ -70,12 +69,6 @@ kotlin {
             implementation(libs.mlkit.text.recognition.japanese)
             implementation(libs.mlkit.text.recognition.korean)
             implementation(libs.rapidocr.android)
-            // Explicit: BubbleInvertStep uses the ai.onnxruntime JAVA API for the
-            // speech-bubble detector. It arrives transitively via rapidocr, but a
-            // transitive `implementation` is not on OUR compile classpath, so the
-            // import would not resolve. Version is pinned by the resolutionStrategy
-            // force below (must match the superbuild — see komelia-app).
-            implementation("com.microsoft.onnxruntime:onnxruntime-android:1.25.0")
             implementation(libs.kotlinx.coroutines.play.services)
             implementation(libs.commons.compress)
             api(libs.ktor.client.okhttp)
@@ -86,8 +79,6 @@ kotlin {
             implementation(libs.protobuf.kotlin.lite)
             implementation(libs.slf4j.api)
             implementation(projects.komeliaInfra.imageDecoder.vips)
-            implementation(projects.komeliaInfra.onnxruntime.jvm)
-            implementation(projects.komeliaInfra.ncnnUpscaler)
         }
 
         jvmMain.dependencies {
@@ -103,7 +94,6 @@ kotlin {
             implementation(libs.secret.service)
             implementation(libs.slf4j.api)
             implementation(projects.komeliaInfra.imageDecoder.vips)
-            implementation(projects.komeliaInfra.onnxruntime.jvm)
         }
 
         androidUnitTest.dependencies {
@@ -115,8 +105,7 @@ kotlin {
 
 configurations.all {
     resolutionStrategy {
-        // Keep in sync with komelia-app/build.gradle.kts and the superbuild's
-        // cmake/external/onnxruntime.cmake GIT_TAG. See the note there.
+        // Keep in sync with komelia-app/build.gradle.kts. See the note there.
         force("com.microsoft.onnxruntime:onnxruntime-android:1.25.0")
     }
 }

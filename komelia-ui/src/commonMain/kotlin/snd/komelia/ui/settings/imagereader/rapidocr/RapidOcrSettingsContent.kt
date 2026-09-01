@@ -1,4 +1,5 @@
 package snd.komelia.ui.settings.imagereader.rapidocr
+import snd.komelia.ui.settings.imagereader.DownloadDialog
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -15,7 +16,6 @@ import snd.komelia.db.ImageReaderSettings
 import snd.komelia.ui.LocalAccentColor
 import snd.komelia.ui.common.components.DropdownChoiceMenu
 import snd.komelia.ui.common.components.LabeledEntry
-import snd.komelia.ui.settings.imagereader.onnxruntime.DownloadDialog
 import snd.komelia.updates.UpdateProgress
 import snd.komelia.ui.LocalStrings
 

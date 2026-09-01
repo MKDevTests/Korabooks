@@ -21,7 +21,6 @@ import kotlinx.coroutines.launch
 import kotlinx.io.files.Path
 import okhttp3.Cache
 import okhttp3.OkHttpClient
-import io.github.snd_r.komelia.infra.ncnn.NcnnSharedLibraries
 import snd.komelia.backup.BackupService
 import snd.komelia.backup.DefaultBackupService
 import snd.komelia.db.AppSettings
@@ -73,12 +72,8 @@ import snd.komelia.http.komeliaUserAgent
 import snd.komelia.komga.api.LocalFileApiProvider
 import snd.komelia.localfile.LocalFileApiProviderImpl
 import snd.komelia.db.localfile.LocalFileReadProgressRepository
-import snd.komelia.image.AndroidNcnnUpscaler
-import snd.komelia.image.AndroidPanelDetector
 import snd.komelia.image.AndroidReaderImageFactory
 import snd.komelia.image.KomeliaImageDecoder
-import snd.komelia.image.KomeliaPanelDetector
-import snd.komelia.image.KomeliaUpscaler
 import snd.komelia.image.ReaderImageFactory
 import snd.komelia.image.UpsamplingMode
 import snd.komelia.image.VipsImageDecoder
@@ -87,19 +82,12 @@ import snd.komelia.image.processing.ImageProcessingPipeline
 import snd.komelia.offline.AndroidOfflineModule
 import snd.komelia.offline.OfflineModule
 import snd.komelia.offline.OfflineRepositories
-import snd.komelia.onnxruntime.JvmOnnxRuntime
-import snd.komelia.onnxruntime.JvmOnnxRuntimeRfDetr
-import snd.komelia.onnxruntime.OnnxRuntime
-import snd.komelia.onnxruntime.OnnxRuntimeExecutionProvider
-import snd.komelia.onnxruntime.OnnxRuntimeSharedLibraries
 import snd.komelia.settings.AndroidSecretsRepository
 import snd.komelia.settings.AppSettingsSerializer
 import snd.komelia.settings.ImageReaderSettingsRepository
 import snd.komelia.updates.AndroidAppUpdater
-import snd.komelia.updates.AndroidOnnxModelDownloader
 import snd.komelia.updates.AndroidRapidOcrModelDownloader
 import snd.komelia.updates.AppUpdater
-import snd.komelia.updates.OnnxModelDownloader
 import snd.komelia.updates.RapidOcrModelDownloader
 import snd.komelia.updates.UpdateClient
 import snd.komga.client.KomgaClientFactory
@@ -115,7 +103,6 @@ class AndroidAppModule(
     private val mainActivity: StateFlow<Activity?>,
     serverId: Long? = null
 ) : AppModule(serverId) {
-    private var ncnnUpscaler: AndroidNcnnUpscaler? = null
     private val databases = KomeliaDatabase(context.filesDir.absolutePath.toString(), serverId)
 
     private val okHttpLogger = KotlinLogging.logger("http.logging")
@@ -154,51 +141,9 @@ class AndroidAppModule(
             }
         }.also { logger.info { "completed vips libraries load in $it" } }
 
-        try {
-            OnnxRuntimeSharedLibraries.load()
-        } catch (e: UnsatisfiedLinkError) {
-            logger.error(e) { "Failed to load onnxruntime " }
-        }
-
-        NcnnSharedLibraries.load()
         snd.komelia.image.OcrService.context = context
 
         fontsDirectory = Path(context.filesDir.resolve("fonts").absolutePath)
-        installBundledBubbleModel()
-    }
-
-    /**
-     * Copies the bundled speech-bubble detector out of assets into the ONNX
-     * models directory, once, so [snd.komelia.image.processing.BubbleInvertStep]
-     * can open it by path like the panel model.
-     *
-     * Re-copies when the size differs, which is what makes a model update ride
-     * along with an app update. Failures are non-fatal: a missing model just
-     * leaves bubble inversion inactive.
-     */
-    private fun installBundledBubbleModel() {
-        runCatching {
-            val dir = context.filesDir.resolve("onnx").apply { mkdirs() }
-            val target = dir.resolve(BUBBLE_DETECTOR_MODEL)
-            val marker = dir.resolve("$BUBBLE_DETECTOR_MODEL.installed")
-            val appVersion = context.packageManager
-                .getPackageInfo(context.packageName, 0).versionName ?: "unknown"
-
-            // Version marker rather than a size comparison: assets are stored
-            // compressed, so AssetManager.openFd() would throw and we'd have no
-            // reliable expected size — and the failure would be silent.
-            if (target.isFile && runCatching { marker.readText() }.getOrNull() == appVersion) {
-                return@runCatching
-            }
-
-            context.assets.open(BUBBLE_DETECTOR_MODEL).use { input ->
-                target.outputStream().use { output -> input.copyTo(output) }
-            }
-            marker.writeText(appVersion)
-            logger.info { "installed bundled bubble detection model (${target.length()} bytes)" }
-        }.onFailure {
-            logger.warn(it) { "could not install bundled bubble detection model; bubble inversion stays off" }
-        }
     }
 
 
@@ -366,14 +311,7 @@ class AndroidAppModule(
         imageDecoder: KomeliaImageDecoder,
         pipeline: ImageProcessingPipeline,
         settings: ImageReaderSettingsRepository,
-        onnxRuntimeUpscaler: KomeliaUpscaler?,
-        onnxModelDownloader: OnnxModelDownloader?,
     ): ReaderImageFactory {
-        val ncnn = ncnnUpscaler ?: AndroidNcnnUpscaler(context, settings, onnxModelDownloader).also {
-            it.initialize()
-            ncnnUpscaler = it
-        }
-
         return AndroidReaderImageFactory(
             imageDecoder = imageDecoder,
             downSamplingKernel = settings.getDownsamplingKernel().stateIn(initScope),
@@ -381,11 +319,10 @@ class AndroidAppModule(
             linearLightDownSampling = settings.getLinearLightDownsampling().stateIn(initScope),
             processingPipeline = pipeline,
             stretchImages = settings.getStretchToFit().stateIn(initScope),
-            ncnnUpscaler = ncnn
         )
     }
 
-    override fun createOnBookChange(): () -> Unit = { AndroidNcnnUpscaler.cancelPendingRequests() }
+    override fun createOnBookChange(): () -> Unit = { }
 
     override fun createOnEpubCacheClear(): () -> Unit = {
         context.cacheDir.resolve("epub3").deleteRecursively()
@@ -395,58 +332,12 @@ class AndroidAppModule(
 
     override fun createCoilContext() = context
 
-    override fun createOnnxRuntimeInstaller(updateClient: UpdateClient) = null
-
-    override fun createOnnxModelDownloader(updateClient: UpdateClient) =
-        AndroidOnnxModelDownloader(
-            updateClient = updateClient,
-            appNotifications = appNotifications,
-            dataDir = context.filesDir.toPath()
-        )
-
     override fun createRapidOcrModelDownloader(updateClient: UpdateClient): RapidOcrModelDownloader =
         AndroidRapidOcrModelDownloader(
             updateClient = updateClient,
             appNotifications = appNotifications,
             dataDir = context.filesDir.toPath()
         )
-
-    override fun createOnnxRuntime(): OnnxRuntime? {
-        if (!OnnxRuntimeSharedLibraries.isAvailable) {
-            logger.warn { "OnnxRuntime is not available" }
-            return null
-        }
-        val dataDir = context.dataDir.resolve("onnxruntime").toPath().createDirectories()
-        return JvmOnnxRuntime.create(dataDir.toString())
-    }
-
-    override suspend fun createUpscaler(
-        onnxRuntime: OnnxRuntime,
-        modelDownloader: OnnxModelDownloader,
-        settings: ImageReaderSettingsRepository,
-    ): KomeliaUpscaler? = null
-
-    override suspend fun createPanelDetector(
-        onnxRuntime: OnnxRuntime,
-        modelDownloader: OnnxModelDownloader,
-        settings: ImageReaderSettingsRepository,
-    ): KomeliaPanelDetector {
-        val rfDetr = JvmOnnxRuntimeRfDetr.create(onnxRuntime as JvmOnnxRuntime)
-        val modelsDir = context.filesDir.resolve("onnx").toPath().createDirectories()
-        val panelDetector = AndroidPanelDetector(
-            rfDetr = rfDetr,
-            executionProvider = OnnxRuntimeExecutionProvider.CPU,
-            deviceId = MutableStateFlow(0),
-            updateFlow = modelDownloader.downloadCompletionEvents.filterIsInstance(),
-            dataDir = modelsDir,
-        ).also { it.initialize() }
-
-        return panelDetector
-    }
-
-    /** Same directory the panel detector downloads into (filesDir/onnx). */
-    override fun getOnnxModelsDirectoryPath(): String =
-        context.filesDir.resolve("onnx").absolutePath
 
     override fun getCoilCacheDirectory(): Path {
         val path = context.cacheDir.resolve("coil3_disk_cache")

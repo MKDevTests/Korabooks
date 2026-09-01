@@ -45,8 +45,6 @@ fun CommonImageSettings(
     onStretchToFitChange: (Boolean) -> Unit,
     cropBorders: Boolean,
     onCropBordersChange: (Boolean) -> Unit,
-    invertSpeechBubbles: Boolean,
-    onInvertSpeechBubblesChange: (Boolean) -> Unit,
     webtoonSmartScroll: Boolean,
     onWebtoonSmartScrollChange: (Boolean) -> Unit,
     loadThumbnailPreviews: Boolean,
@@ -83,14 +81,6 @@ fun CommonImageSettings(
                 checked = cropBorders,
                 onCheckedChange = onCropBordersChange,
                 label = { Text(LocalStrings.current.ui.cropBorders) },
-                contentPadding = PaddingValues(horizontal = 10.dp)
-            )
-
-            SwitchWithLabel(
-                checked = invertSpeechBubbles,
-                onCheckedChange = onInvertSpeechBubblesChange,
-                label = { Text(LocalStrings.current.ui.invertSpeechBubbles) },
-                supportingText = { Text(LocalStrings.current.ui.blackBubbleWhiteTextArtwork) },
                 contentPadding = PaddingValues(horizontal = 10.dp)
             )
 

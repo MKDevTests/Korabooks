@@ -25,14 +25,11 @@ import snd.komelia.AppNotifications
 import snd.komelia.ManagedKomgaEvents
 import snd.komelia.color.repository.BookColorCorrectionRepository
 import snd.komelia.image.BookImageLoader
-import snd.komelia.image.KomeliaPanelDetector
-import snd.komelia.image.KomeliaUpscaler
 import snd.komelia.image.ReaderImageFactory
 import snd.komelia.komga.api.KomgaBookApi
 import snd.komelia.komga.api.KomgaReadListApi
 import snd.komelia.komga.api.model.KomeliaBook
 import snd.komelia.komga.api.KomgaSeriesApi
-import snd.komelia.onnxruntime.OnnxRuntime
 import snd.komelia.reader.SeriesReaderOverridesRepository
 import snd.komelia.settings.CommonSettingsRepository
 import snd.komelia.settings.ImageReaderSettingsRepository
@@ -42,16 +39,11 @@ import snd.komelia.settings.model.PagedReadingDirection
 import snd.komelia.settings.model.OcrSettings
 import snd.komelia.settings.model.ReaderType.CONTINUOUS
 import snd.komelia.settings.model.ReaderType.PAGED
-import snd.komelia.settings.model.ReaderType.PANELS
 import snd.komelia.ui.BookSiblingsContext
 import snd.komelia.ui.LoadState
 import snd.komelia.ui.reader.image.continuous.ContinuousReaderState
 import snd.komelia.ui.reader.image.paged.PagedReaderState
-import snd.komelia.ui.reader.image.panels.PanelsReaderState
-import snd.komelia.ui.settings.imagereader.ncnn.NcnnSettingsState
-import snd.komelia.ui.settings.imagereader.onnxruntime.OnnxRuntimeSettingsState
 import snd.komelia.ui.strings.AppStrings
-import snd.komelia.updates.OnnxModelDownloader
 import snd.komga.client.book.KomgaBookId
 
 private val cleanupScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
@@ -76,10 +68,6 @@ class ReaderViewModel(
     private val epubBookmarkRepository: snd.komelia.bookmarks.EpubBookmarkRepository,
     private val readerSyncService: snd.komelia.sync.ReaderSyncService,
     private val komgaEvents: ManagedKomgaEvents,
-    private val onnxRuntime: OnnxRuntime?,
-    private val panelDetector: KomeliaPanelDetector?,
-    private val upscaler: KomeliaUpscaler?,
-    private val onnxModelDownloader: OnnxModelDownloader?,
     private val ocrService: snd.komelia.image.OcrService,
     val colorCorrectionIsActive: Flow<Boolean>,
     onBookChange: () -> Unit = {},
@@ -90,24 +78,6 @@ class ReaderViewModel(
     private val pageChangeFlow = MutableSharedFlow<Unit>(
         extraBufferCapacity = 1,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
-    )
-
-    val onnxRuntimeSettingsState = upscaler?.let {
-        OnnxRuntimeSettingsState(
-            onnxRuntimeInstaller = null,
-            onnxModelDownloader = onnxModelDownloader,
-            onnxRuntime = onnxRuntime,
-            upscaler = upscaler,
-            panelDetector = panelDetector,
-            settingsRepository = readerSettingsRepository,
-            coroutineScope = screenModelScope,
-        )
-    }
-
-    val ncnnSettingsState = NcnnSettingsState(
-        onnxModelDownloader = onnxModelDownloader,
-        settingsRepository = readerSettingsRepository,
-        coroutineScope = screenModelScope,
     )
 
     val readerState: ReaderState = ReaderState(
@@ -130,7 +100,6 @@ class ReaderViewModel(
         komgaEvents = komgaEvents,
         pageChangeFlow = pageChangeFlow,
         ocrService = ocrService,
-        panelsAvailable = { panelDetector != null && panelDetector.isAvailable.value },
     )
 
     val pagedReaderState = PagedReaderState(
@@ -146,22 +115,6 @@ class ReaderViewModel(
         seriesReaderOverridesRepository = seriesReaderOverridesRepository,
         blankPageDetector = blankPageDetector,
     )
-    val panelsReaderState = panelDetector?.let { panelDetector ->
-        if (!panelDetector.isAvailable.value) null
-        else
-            PanelsReaderState(
-                cleanupScope = cleanupScope,
-                readerState = readerState,
-                appNotifications = appNotifications,
-                settingsRepository = readerSettingsRepository,
-                imageLoader = imageLoader,
-                appStrings = appStrings,
-                pageChangeFlow = pageChangeFlow,
-                screenScaleState = screenScaleState,
-                onnxRuntimeRfDetr = panelDetector,
-                seriesReaderOverridesRepository = seriesReaderOverridesRepository,
-            )
-    }
     val continuousReaderState = ContinuousReaderState(
         cleanupScope = cleanupScope,
         readerState = readerState,
@@ -183,7 +136,6 @@ class ReaderViewModel(
             when (type) {
                 PAGED -> if (pagedDir == PagedReadingDirection.RIGHT_TO_LEFT) ReadingDirection.RTL else ReadingDirection.LTR
                 CONTINUOUS -> if (continuousDir == ContinuousReadingDirection.RIGHT_TO_LEFT) ReadingDirection.RTL else ReadingDirection.LTR
-                PANELS -> ReadingDirection.LTR
             }
         }.onEach { readerState.readingDirection.value = it }
             .launchIn(screenModelScope)
@@ -195,7 +147,6 @@ class ReaderViewModel(
                         when (readerType) {
                             PAGED -> pagedReaderState.currentSpread.map { it.pages.firstOrNull()?.imageResult?.image }
                             CONTINUOUS -> flowOf(null) // TODO
-                            PANELS -> panelsReaderState?.currentPage?.map { it?.imageResult?.image } ?: flowOf(null)
                         }
                     }.debounce(200)
                 } else {
@@ -213,8 +164,6 @@ class ReaderViewModel(
         val currentState = readerState.state.value
         if (currentState is LoadState.Success || currentState == LoadState.Loading) return
 
-        onnxRuntimeSettingsState?.initialize()
-        ncnnSettingsState.initialize()
         readerState.initialize(bookId, seedBook)
         screenScaleState.areaSize.takeWhile { it == IntSize.Zero }.collect()
 
@@ -223,14 +172,6 @@ class ReaderViewModel(
             when (it) {
                 PAGED -> pagedReaderState.initialize()
                 CONTINUOUS -> continuousReaderState.initialize()
-                PANELS -> {
-                    if (panelsReaderState == null) {
-                        logger.warn { "onnx runtime was not provided. Falling back to paged reader" }
-                        readerState.onReaderTypeChange(PAGED)
-                    } else {
-                        panelsReaderState.initialize()
-                    }
-                }
             }
         }.launchIn(screenModelScope)
     }
@@ -238,14 +179,10 @@ class ReaderViewModel(
     private fun stopAllReaderModeStates() {
         pagedReaderState.stop()
         continuousReaderState.stop()
-        panelsReaderState?.stop()
-
     }
 
     override fun onDispose() {
         stopAllReaderModeStates()
         readerState.onDispose()
-        panelDetector?.closeCurrentSession()
-        upscaler?.closeCurrentSession()
     }
 }

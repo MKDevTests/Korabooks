@@ -14,7 +14,6 @@ import kotlin.time.Instant
 // manga client. scripts/release-korabooks.sh publishes the tagged releases
 // this reads.
 private const val komeliaBaseUrl = "https://api.github.com/repos/MKDevTests/Korabooks"
-private const val onnxRuntimeBaseUrl = "https://api.github.com/repos/microsoft/onnxruntime"
 
 class UpdateClient(
     private val ktor: HttpClient,
@@ -39,10 +38,6 @@ class UpdateClient(
      */
     suspend fun getKomeliaReleaseByTag(tagName: String): GithubRelease {
         return ktor.get("$komeliaBaseUrl/releases/tags/$tagName").body()
-    }
-
-    suspend fun getOnnxRuntimeRelease(tagName: String): GithubRelease {
-        return ktor.get("$onnxRuntimeBaseUrl/releases/tags/$tagName").body()
     }
 
     suspend fun streamFile(url: String, block: suspend (response: HttpResponse) -> Unit) {

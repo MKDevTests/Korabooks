@@ -35,14 +35,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.materials.HazeMaterials
-import snd.komelia.image.UpscaleStatus
 import snd.komelia.ui.LocalAccentColor
 import snd.komelia.ui.LocalHazeState
 import snd.komelia.ui.LocalHideParenthesesInNames
 import snd.komelia.ui.LocalLockScreenRotation
 import snd.komelia.ui.LocalOnLockScreenRotationChange
 import snd.komelia.ui.LocalTheme
-import snd.komelia.ui.reader.image.settings.UpscaleActivityIndicator
 import snd.komelia.utils.removeParentheses
 import snd.komelia.ui.LocalStrings
 
@@ -58,7 +56,6 @@ fun ReaderTopBar(
      * keeps the bare-number rendering for callers that don't pass it.
      */
     bookTitle: String = "",
-    upscaleActivities: Map<Int, UpscaleStatus> = emptyMap(),
     modifier: Modifier = Modifier,
 ) {
     val theme = LocalTheme.current
@@ -154,9 +151,6 @@ fun ReaderTopBar(
                         tint = accentColor
                     )
                 }
-            }
-            AnimatedVisibility(visible = upscaleActivities.isNotEmpty()) {
-                UpscaleActivityIndicator(upscaleActivities)
             }
         }
     }

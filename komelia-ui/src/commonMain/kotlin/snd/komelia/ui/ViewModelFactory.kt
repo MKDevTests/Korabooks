@@ -340,10 +340,6 @@ class ViewModelFactory(
             epubBookmarkRepository = appRepositories.epubBookmarkRepository,
             readerSyncService = dependencies.readerSyncService,
             komgaEvents = dependencies.komgaEvents,
-            onnxRuntime = dependencies.onnxRuntime,
-            panelDetector = dependencies.panelDetector,
-            upscaler = dependencies.upscaler,
-            onnxModelDownloader = dependencies.onnxModelDownloader,
             ocrService = dependencies.ocrService,
             colorCorrectionIsActive = dependencies.colorCorrectionStep.isActive,
             bookSiblingsContext = bookSiblingsContext,
@@ -740,11 +736,6 @@ class ViewModelFactory(
             commonSettingsRepository = appRepositories.settingsRepository,
             appNotifications = dependencies.appNotifications,
 
-            onnxRuntime = dependencies.onnxRuntime,
-            upscaler = dependencies.upscaler,
-            panelDetector = dependencies.panelDetector,
-            onnxRuntimeInstaller = dependencies.onnxRuntimeInstaller,
-            onnxModelDownloader = dependencies.onnxModelDownloader,
             rapidOcrModelDownloader = dependencies.rapidOcrModelDownloader,
 
             coilMemoryCache = dependencies.coilImageLoader.memoryCache,

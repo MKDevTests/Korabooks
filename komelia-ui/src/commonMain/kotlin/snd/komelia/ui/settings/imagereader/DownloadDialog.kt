@@ -1,4 +1,4 @@
-package snd.komelia.ui.settings.imagereader.onnxruntime
+package snd.komelia.ui.settings.imagereader
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box

@@ -6,11 +6,9 @@ import snd.komelia.db.ImageReaderSettings
 import snd.komelia.db.SettingsStateWrapper
 import snd.komelia.image.ReduceKernel
 import snd.komelia.image.UpsamplingMode
-import snd.komelia.image.UpscaleMode
 import snd.komelia.settings.ImageReaderSettingsRepository
 import snd.komelia.settings.model.ContinuousReadingDirection
 import snd.komelia.settings.model.LayoutScaleType
-import snd.komelia.settings.model.NcnnUpscalerSettings
 import snd.komelia.settings.model.OcrSettings
 import snd.komelia.settings.model.PageDisplayLayout
 import snd.komelia.settings.model.PagedReadingDirection
@@ -31,13 +29,7 @@ class ReaderSettingsRepositoryWrapper(
         wrapper.transform { settings -> settings.copy(readerType = type) }
     }
 
-    override fun getNcnnUpscalerSettings(): Flow<NcnnUpscalerSettings> {
-        return wrapper.mapState { it.ncnnUpscalerSettings }
-    }
 
-    override suspend fun putNcnnUpscalerSettings(settings: NcnnUpscalerSettings) {
-        wrapper.transform { it.copy(ncnnUpscalerSettings = settings) }
-    }
 
     override fun getOcrSettings(): Flow<OcrSettings> {
         return wrapper.mapState { it.ocrSettings }
@@ -183,37 +175,13 @@ class ReaderSettingsRepositoryWrapper(
         wrapper.transform { it.copy(volumeKeysNavigation = enable) }
     }
 
-    override fun getUpscalerMode(): Flow<UpscaleMode> {
-        return wrapper.mapState { it.ortUpscalerMode }
-    }
 
-    override suspend fun putUpscalerMode(mode: UpscaleMode) {
-        wrapper.transform { it.copy(ortUpscalerMode = mode) }
-    }
 
-    override fun getOnnxRuntimeDeviceId(): Flow<Int> {
-        return wrapper.mapState { it.ortUpscalerDeviceId }
-    }
 
-    override suspend fun putOnnxRuntimeDeviceId(deviceId: Int) {
-        wrapper.transform { it.copy(ortUpscalerDeviceId = deviceId) }
-    }
 
-    override fun getOnnxRuntimeTileSize(): Flow<Int> {
-        return wrapper.mapState { it.ortUpscalerTileSize }
-    }
 
-    override suspend fun putOnnxRuntimeTileSize(tileSize: Int) {
-        wrapper.transform { it.copy(ortUpscalerTileSize = tileSize) }
-    }
 
-    override fun getUpscalerOnnxModel(): Flow<PlatformFile?> {
-        return wrapper.mapState { it.ortUpscalerUserModelPath }
-    }
 
-    override suspend fun putUpscalerOnnxModel(name: PlatformFile?) {
-        wrapper.transform { it.copy(ortUpscalerUserModelPath = name) }
-    }
 
     override fun getPanelsFullPageDisplayMode(): Flow<PanelsFullPageDisplayMode> {
         return wrapper.mapState { it.panelsFullPageDisplayMode }
@@ -263,13 +231,7 @@ class ReaderSettingsRepositoryWrapper(
         wrapper.transform { it.copy(tapNavigationMode = mode) }
     }
 
-    override fun getPanelDetectionUrl(): Flow<String> {
-        return wrapper.mapState { it.panelDetectionUrl }
-    }
 
-    override suspend fun putPanelDetectionUrl(url: String) {
-        wrapper.transform { it.copy(panelDetectionUrl = url) }
-    }
 
     override fun getRapidOcrModelsUrl(): Flow<String> {
         return wrapper.mapState { it.rapidOcrModelsUrl }
@@ -327,13 +289,7 @@ class ReaderSettingsRepositoryWrapper(
         wrapper.transform { it.copy(pagedAutoDetectWebtoon = enabled) }
     }
 
-    override fun getInvertSpeechBubbles(): Flow<Boolean> {
-        return wrapper.mapState { it.invertSpeechBubbles }
-    }
 
-    override suspend fun putInvertSpeechBubbles(enabled: Boolean) {
-        wrapper.transform { it.copy(invertSpeechBubbles = enabled) }
-    }
 
     override fun getContinuousReaderTapToZoom(): Flow<Boolean> {
         return wrapper.mapState { it.continuousReaderTapToZoom }

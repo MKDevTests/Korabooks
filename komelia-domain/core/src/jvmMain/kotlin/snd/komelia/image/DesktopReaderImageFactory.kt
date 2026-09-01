@@ -12,7 +12,6 @@ class DesktopReaderImageFactory(
     private val linearLightDownSampling: StateFlow<Boolean>,
     private val stretchImages: StateFlow<Boolean>,
     private val processingPipeline: ImageProcessingPipeline,
-    private val onnxUpscaler: KomeliaUpscaler?,
 ) : ReaderImageFactory {
 
     override suspend fun getImage(imageSource: ImageSource, pageId: PageId): ReaderImage {
@@ -25,7 +24,6 @@ class DesktopReaderImageFactory(
             downSamplingKernel = downSamplingKernel,
             linearLightDownSampling = linearLightDownSampling,
             pageId = pageId,
-            upscaler = onnxUpscaler,
             showDebugGrid = MutableStateFlow(false),
         )
     }

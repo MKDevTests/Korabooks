@@ -4,10 +4,8 @@ import io.github.vinceglb.filekit.PlatformFile
 import kotlinx.coroutines.flow.Flow
 import snd.komelia.image.ReduceKernel
 import snd.komelia.image.UpsamplingMode
-import snd.komelia.image.UpscaleMode
 import snd.komelia.settings.model.ContinuousReadingDirection
 import snd.komelia.settings.model.LayoutScaleType
-import snd.komelia.settings.model.NcnnUpscalerSettings
 import snd.komelia.settings.model.OcrSettings
 import snd.komelia.settings.model.PageDisplayLayout
 import snd.komelia.settings.model.PagedReadingDirection
@@ -20,8 +18,6 @@ interface ImageReaderSettingsRepository {
     fun getReaderType(): Flow<ReaderType>
     suspend fun putReaderType(type: ReaderType)
 
-    fun getNcnnUpscalerSettings(): Flow<NcnnUpscalerSettings>
-    suspend fun putNcnnUpscalerSettings(settings: NcnnUpscalerSettings)
 
     fun getOcrSettings(): Flow<OcrSettings>
     suspend fun putOcrSettings(settings: OcrSettings)
@@ -77,17 +73,9 @@ interface ImageReaderSettingsRepository {
     fun getVolumeKeysNavigation(): Flow<Boolean>
     suspend fun putVolumeKeysNavigation(enable: Boolean)
 
-    fun getUpscalerMode(): Flow<UpscaleMode>
-    suspend fun putUpscalerMode(mode: UpscaleMode)
 
-    fun getOnnxRuntimeDeviceId(): Flow<Int>
-    suspend fun putOnnxRuntimeDeviceId(deviceId: Int)
 
-    fun getOnnxRuntimeTileSize(): Flow<Int>
-    suspend fun putOnnxRuntimeTileSize(tileSize: Int)
 
-    fun getUpscalerOnnxModel(): Flow<PlatformFile?>
-    suspend fun putUpscalerOnnxModel(name: PlatformFile?)
 
     fun getPanelsFullPageDisplayMode(): Flow<PanelsFullPageDisplayMode>
     suspend fun putPanelsFullPageDisplayMode(mode: PanelsFullPageDisplayMode)
@@ -107,8 +95,6 @@ interface ImageReaderSettingsRepository {
     fun getReaderTapNavigationMode(): Flow<ReaderTapNavigationMode>
     suspend fun putReaderTapNavigationMode(mode: ReaderTapNavigationMode)
 
-    fun getPanelDetectionUrl(): Flow<String>
-    suspend fun putPanelDetectionUrl(url: String)
 
     fun getRapidOcrModelsUrl(): Flow<String>
     suspend fun putRapidOcrModelsUrl(url: String)
@@ -143,8 +129,6 @@ interface ImageReaderSettingsRepository {
      * leaving the artwork untouched. See
      * [snd.komelia.image.processing.BubbleInvertStep].
      */
-    fun getInvertSpeechBubbles(): Flow<Boolean>
-    suspend fun putInvertSpeechBubbles(enabled: Boolean)
 
     /**
      * Image reader minimal-UI-while-reading toggle (v1.0.11). When true,

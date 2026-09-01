@@ -13,8 +13,6 @@ import snd.komelia.anilist.AniListClient
 import snd.komelia.backup.BackupService
 import snd.komelia.image.BookImageLoader
 import snd.komelia.image.KomeliaImageDecoder
-import snd.komelia.image.KomeliaPanelDetector
-import snd.komelia.image.KomeliaUpscaler
 import snd.komelia.image.ReaderImageFactory
 import snd.komelia.image.processing.BlankPageDetector
 import snd.komelia.image.processing.ColorCorrectionStep
@@ -25,14 +23,11 @@ import kotlinx.coroutines.flow.SharedFlow
 import snd.komelia.komga.api.model.KomeliaBook
 import snd.komelia.nextbook.NextBookService
 import snd.komelia.offline.OfflineDependencies
-import snd.komelia.onnxruntime.OnnxRuntime
 import snd.komelia.stats.BookCompletionEvents
 import snd.komelia.ui.settings.diagnostics.DiagnosticsDataSource
 import snd.komelia.ui.settings.diagnostics.EmptyDiagnosticsDataSource
 import snd.komelia.ui.strings.AppStrings
 import snd.komelia.updates.AppUpdater
-import snd.komelia.updates.OnnxModelDownloader
-import snd.komelia.updates.OnnxRuntimeInstaller
 import snd.komelia.updates.RapidOcrModelDownloader
 import snd.komelia.updates.ReleaseNotesService
 
@@ -70,12 +65,7 @@ data class DependencyContainer(
     val colorCorrectionStep: ColorCorrectionStep,
     val blankPageDetector: BlankPageDetector,
 
-    val onnxRuntimeInstaller: OnnxRuntimeInstaller?,
-    val onnxModelDownloader: OnnxModelDownloader?,
     val rapidOcrModelDownloader: RapidOcrModelDownloader?,
-    val onnxRuntime: OnnxRuntime?,
-    val upscaler: KomeliaUpscaler?,
-    val panelDetector: KomeliaPanelDetector?,
 
     val offlineDependencies: OfflineDependencies,
     /** The OPDS catalogue this app mirrors: its address, its login, its sync. */

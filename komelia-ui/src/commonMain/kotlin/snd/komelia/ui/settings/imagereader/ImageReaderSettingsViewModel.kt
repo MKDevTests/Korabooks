@@ -9,54 +9,24 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import snd.komelia.AppNotification
 import snd.komelia.AppNotifications
-import snd.komelia.image.KomeliaPanelDetector
-import snd.komelia.image.KomeliaUpscaler
 import snd.komelia.image.ReduceKernel
 import snd.komelia.image.UpsamplingMode
 import snd.komelia.image.availableReduceKernels
 import snd.komelia.image.availableUpsamplingModes
-import snd.komelia.onnxruntime.OnnxRuntime
 import snd.komelia.settings.CommonSettingsRepository
 import snd.komelia.settings.ImageReaderSettingsRepository
-import snd.komelia.ui.settings.imagereader.ncnn.NcnnSettingsState
-import snd.komelia.ui.settings.imagereader.onnxruntime.OnnxRuntimeSettingsState
 import snd.komelia.ui.settings.imagereader.rapidocr.RapidOcrSettingsState
-import snd.komelia.updates.OnnxModelDownloader
-import snd.komelia.updates.OnnxRuntimeInstaller
 import snd.komelia.updates.RapidOcrModelDownloader
 
 class ImageReaderSettingsViewModel(
     private val settingsRepository: ImageReaderSettingsRepository,
     private val commonSettingsRepository: CommonSettingsRepository,
     private val appNotifications: AppNotifications,
-    private val onnxRuntimeInstaller: OnnxRuntimeInstaller?,
-    private val onnxRuntime: OnnxRuntime?,
-    private val upscaler: KomeliaUpscaler?,
-    private val panelDetector: KomeliaPanelDetector?,
-    private val onnxModelDownloader: OnnxModelDownloader?,
     private val rapidOcrModelDownloader: RapidOcrModelDownloader?,
     private val coilMemoryCache: MemoryCache?,
     private val coilDiskCache: DiskCache?,
     private val readerDiskCache: DiskCache?,
 ) : ScreenModel {
-
-    val onnxRuntimeSettingsState = OnnxRuntimeSettingsState(
-        onnxRuntimeInstaller = onnxRuntimeInstaller,
-        onnxModelDownloader = onnxModelDownloader,
-
-        onnxRuntime = onnxRuntime,
-        panelDetector = panelDetector,
-        upscaler = upscaler,
-
-        settingsRepository = settingsRepository,
-        coroutineScope = screenModelScope
-    )
-
-    val ncnnSettingsState = NcnnSettingsState(
-        onnxModelDownloader = onnxModelDownloader,
-        settingsRepository = settingsRepository,
-        coroutineScope = screenModelScope
-    )
 
     val rapidOcrSettingsState = RapidOcrSettingsState(
         rapidOcrModelDownloader = rapidOcrModelDownloader,
@@ -75,7 +45,6 @@ class ImageReaderSettingsViewModel(
     val pagedAutoSkipBlankPages = MutableStateFlow(false)
     val pagedAutoDetectWebtoon = MutableStateFlow(false)
     val webtoonSmartScroll = MutableStateFlow(true)
-    val invertSpeechBubbles = MutableStateFlow(false)
     val continuousReaderStopAtEnd = MutableStateFlow(true)
     val availableUpsamplingModes = availableUpsamplingModes()
     val availableDownsamplingKernels = availableReduceKernels()
@@ -94,10 +63,7 @@ class ImageReaderSettingsViewModel(
         pagedAutoSkipBlankPages.value = settingsRepository.getPagedAutoSkipBlankPages().first()
         pagedAutoDetectWebtoon.value = settingsRepository.getPagedAutoDetectWebtoon().first()
         webtoonSmartScroll.value = settingsRepository.getWebtoonSmartScroll().first()
-        invertSpeechBubbles.value = settingsRepository.getInvertSpeechBubbles().first()
         continuousReaderStopAtEnd.value = settingsRepository.getContinuousReaderStopAtEnd().first()
-        onnxRuntimeSettingsState.initialize()
-        ncnnSettingsState.initialize()
         rapidOcrSettingsState.initialize()
     }
 
@@ -151,11 +117,6 @@ class ImageReaderSettingsViewModel(
         screenModelScope.launch { settingsRepository.putWebtoonSmartScroll(enabled) }
     }
 
-    fun onInvertSpeechBubblesChange(enabled: Boolean) {
-        invertSpeechBubbles.value = enabled
-        screenModelScope.launch { settingsRepository.putInvertSpeechBubbles(enabled) }
-    }
-
     fun onPagedAutoDetectWebtoonChange(enabled: Boolean) {
         pagedAutoDetectWebtoon.value = enabled
         screenModelScope.launch { settingsRepository.putPagedAutoDetectWebtoon(enabled) }
@@ -176,6 +137,5 @@ class ImageReaderSettingsViewModel(
         coilMemoryCache?.clear()
         coilDiskCache?.clear()
         readerDiskCache?.clear()
-        upscaler?.clearCache()
     }
 }

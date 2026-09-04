@@ -445,6 +445,7 @@ val FrStrings = AppStrings(
         "connected" to "Connecté",
         "connectedServers" to "Serveurs connectés",
         "connection" to "Connexion",
+        "contents" to "Sommaire",
         "continueReading" to "Continuer la lecture",
         "continueReading2" to "Continuer la lecture",
         "continuous" to "Continu",

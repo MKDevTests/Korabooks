@@ -433,6 +433,7 @@ val EnStrings = AppStrings(
         "connected" to "Connected",
         "connectedServers" to "Connected Servers",
         "connection" to "Connection",
+        "contents" to "Contents",
         "continueReading" to "Continue Reading",
         "continueReading2" to "Continue reading",
         "continuous" to "Continuous",

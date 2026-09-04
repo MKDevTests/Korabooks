@@ -153,8 +153,15 @@ fun Epub3ContentDialog(
                 containerColor = Color.Transparent,
             ) {
                 // Use content slot (not text=) so we can reduce horizontal padding from
-                // the default 16 dp to 6 dp — enough room for "Bookmarks" to stay on one line.
-                listOf("Contents", "Bookmarks", "Notes", "Search").forEachIndexed { index, label ->
+                // the default 16 dp to 6 dp — enough room for the longest label
+                // ("Marque-pages" in French) to stay on one line.
+                val tabStrings = LocalStrings.current.ui
+                listOf(
+                    tabStrings.contents,
+                    tabStrings.bookmarks,
+                    tabStrings.notes,
+                    tabStrings.search,
+                ).forEachIndexed { index, label ->
                     Tab(
                         selected = pagerState.currentPage == index,
                         onClick = { coroutineScope.launch { pagerState.animateScrollToPage(index) } },
@@ -380,7 +387,7 @@ private fun BookmarkRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            val chapterTitle = locator?.title ?: "Chapter Unknown"
+            val chapterTitle = locator?.title ?: LocalStrings.current.ui.unknownChapter
             Text(
                 text = chapterTitle,
                 style = MaterialTheme.typography.bodyMedium,
@@ -550,7 +557,7 @@ private fun SearchResultRow(
             .clickable { onNavigate(locator) }
             .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
-        val chapterTitle = locator.title ?: "Chapter Unknown"
+        val chapterTitle = locator.title ?: LocalStrings.current.ui.unknownChapter
         Text(
             text = "${index + 1}. $chapterTitle",
             style = MaterialTheme.typography.bodyMedium,

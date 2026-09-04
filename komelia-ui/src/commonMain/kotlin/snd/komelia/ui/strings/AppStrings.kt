@@ -328,6 +328,7 @@ class UiStrings(private val values: Map<String, String>) {
     val connected: String get() = at("connected")
     val connectedServers: String get() = at("connectedServers")
     val connection: String get() = at("connection")
+    val contents: String get() = at("contents")
     val continueReading: String get() = at("continueReading")
     val continueReading2: String get() = at("continueReading2")
     val continuous: String get() = at("continuous")

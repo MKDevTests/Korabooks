@@ -157,6 +157,7 @@ data class CountStrings(
     val maxImageCacheSize: (String) -> String,
     val pageOf: (Int, Int) -> String,
     val locationOf: (Int, Int) -> String,
+    val searchResults: (Int) -> String,
 )
 
 /**

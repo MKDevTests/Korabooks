@@ -459,7 +459,7 @@ private fun SearchTab(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "${searchResults.size} Results",
+                text = LocalStrings.current.counts.searchResults(searchResults.size),
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

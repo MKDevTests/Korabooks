@@ -1136,6 +1136,7 @@ val EnStrings = AppStrings(
         maxImageCacheSize = { "Max image cache size: $it GB" },
         pageOf = { page, total -> "Page $page of $total" },
         locationOf = { location, total -> "Loc. $location of $total" },
+        searchResults = { if (it == 1) "1 result" else "$it results" },
     ),
     navigation = NavigationStrings(
         libraries = "Libraries",

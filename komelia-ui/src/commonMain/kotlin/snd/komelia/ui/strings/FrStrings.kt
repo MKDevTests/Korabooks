@@ -1148,6 +1148,7 @@ val FrStrings = AppStrings(
         maxImageCacheSize = { "Taille max du cache d'images : $it Go" },
         pageOf = { page, total -> "Page $page sur $total" },
         locationOf = { location, total -> "Emplac. $location sur $total" },
+        searchResults = { "$it résultat" + if (it > 1) "s" else "" },
     ),
     navigation = NavigationStrings(
         libraries = "Bibliothèques",

@@ -389,8 +389,10 @@ private fun BookmarkRow(
             )
 
             val positionIndex = if (locator != null) locatorToPositionIndex(positions, locator) else -1
-            val locationText = if (positions.isNotEmpty() && positionIndex != -1) "Location: ${positionIndex + 1} of ${positions.size}"
-            else "Location: Unknown"
+            val strings = LocalStrings.current
+            val locationText = if (positions.isNotEmpty() && positionIndex != -1)
+                strings.counts.locationOf(positionIndex + 1, positions.size)
+            else strings.ui.unknownLocation
 
             Text(
                 text = locationText,
@@ -517,10 +519,11 @@ private fun AnnotationsTab(
                     location?.let { runCatching { Locator.fromJSON(JSONObject(it.locatorJson)) }.getOrNull() }
                 }
                 val positionIndex = if (locator != null) locatorToPositionIndex(positions, locator) else -1
+                val strings = LocalStrings.current
                 val locationLabel = buildString {
-                    append(locator?.title ?: "Unknown chapter")
+                    append(locator?.title ?: strings.ui.unknownChapter)
                     if (positions.isNotEmpty() && positionIndex >= 0) {
-                        append(" · Location ${positionIndex + 1} of ${positions.size}")
+                        append(" · " + strings.counts.locationOf(positionIndex + 1, positions.size))
                     }
                 }
                 snd.komelia.ui.reader.common.AnnotationRow(
@@ -556,8 +559,10 @@ private fun SearchResultRow(
         )
 
         val positionIndex = locatorToPositionIndex(positions, locator)
-        val locationText = if (positions.isNotEmpty()) "Location: ${positionIndex + 1} of ${positions.size}"
-        else "Location: Unknown"
+        val strings = LocalStrings.current
+        val locationText = if (positions.isNotEmpty())
+            strings.counts.locationOf(positionIndex + 1, positions.size)
+        else strings.ui.unknownLocation
 
         Text(
             text = locationText,

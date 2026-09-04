@@ -302,7 +302,7 @@ actual fun Epub3ReaderContent(state: EpubReaderState) {
                         locatorToPositionIndex(positions, currentLocator)
                     }
                     Text(
-                        text = "Loc. ${locationIndex + 1} of ${positions.size}",
+                        text = LocalStrings.current.counts.locationOf(locationIndex + 1, positions.size),
                         style = MaterialTheme.typography.bodySmall,
                         color = overlayColor,
                         modifier = Modifier

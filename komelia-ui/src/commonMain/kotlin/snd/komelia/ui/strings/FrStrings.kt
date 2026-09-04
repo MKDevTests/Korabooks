@@ -1028,6 +1028,8 @@ val FrStrings = AppStrings(
         "twoSequelsNoOrderBetween" to "Deux suites, sans ordre entre elles. Marquez l'une comme suite de l'autre pour les enchaîner.",
         "type" to "Type",
         "unavailable" to "Indisponible",
+        "unknownChapter" to "Chapitre inconnu",
+        "unknownLocation" to "Emplacement inconnu",
         "unknownSeries" to "Série inconnue",
         "unlinkSeries" to "Délier la série",
         "unset" to "Non défini",
@@ -1143,6 +1145,8 @@ val FrStrings = AppStrings(
         },
         readingStreak = { "$it jour" + (if (it > 1) "s" else "") + " d'affilée" },
         maxImageCacheSize = { "Taille max du cache d'images : $it Go" },
+        pageOf = { page, total -> "Page $page sur $total" },
+        locationOf = { location, total -> "Emplac. $location sur $total" },
     ),
     navigation = NavigationStrings(
         libraries = "Bibliothèques",

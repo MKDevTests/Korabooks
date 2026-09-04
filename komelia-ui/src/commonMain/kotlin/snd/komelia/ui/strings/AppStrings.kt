@@ -155,6 +155,8 @@ data class CountStrings(
     val booksThisMonth: (Int) -> String,
     val readingStreak: (Int) -> String,
     val maxImageCacheSize: (String) -> String,
+    val pageOf: (Int, Int) -> String,
+    val locationOf: (Int, Int) -> String,
 )
 
 /**
@@ -909,6 +911,8 @@ class UiStrings(private val values: Map<String, String>) {
     val twoSequelsNoOrderBetween: String get() = at("twoSequelsNoOrderBetween")
     val type: String get() = at("type")
     val unavailable: String get() = at("unavailable")
+    val unknownChapter: String get() = at("unknownChapter")
+    val unknownLocation: String get() = at("unknownLocation")
     val unknownSeries: String get() = at("unknownSeries")
     val unlinkSeries: String get() = at("unlinkSeries")
     val unset: String get() = at("unset")

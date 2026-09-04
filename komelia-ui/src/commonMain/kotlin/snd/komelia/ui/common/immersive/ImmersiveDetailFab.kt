@@ -216,7 +216,7 @@ fun ImmersiveDetailFab(
                     modifier = Modifier.offset(x = 20.dp, y = 20.dp),
                     expanded = expanded,
                     onExpandedChange = { expanded = it },
-                    primaryActionText = "Read",
+                    primaryActionText = LocalStrings.current.ui.read,
                     primaryActionIcon = Icons.AutoMirrored.Rounded.MenuBook,
                     onPrimaryActionClick = {
                         expanded = false

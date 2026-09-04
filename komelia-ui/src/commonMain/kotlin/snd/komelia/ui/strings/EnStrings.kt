@@ -1016,6 +1016,8 @@ val EnStrings = AppStrings(
         "twoSequelsNoOrderBetween" to "Two sequels, no order between them. Mark one as the sequel of the other to chain them.",
         "type" to "Type",
         "unavailable" to "Unavailable",
+        "unknownChapter" to "Unknown chapter",
+        "unknownLocation" to "Location: unknown",
         "unknownSeries" to "Unknown series",
         "unlinkSeries" to "Unlink series",
         "unset" to "Unset",
@@ -1131,6 +1133,8 @@ val EnStrings = AppStrings(
         },
         readingStreak = { if (it == 1) "1-day streak" else "$it-day streak" },
         maxImageCacheSize = { "Max image cache size: $it GB" },
+        pageOf = { page, total -> "Page $page of $total" },
+        locationOf = { location, total -> "Loc. $location of $total" },
     ),
     navigation = NavigationStrings(
         libraries = "Libraries",

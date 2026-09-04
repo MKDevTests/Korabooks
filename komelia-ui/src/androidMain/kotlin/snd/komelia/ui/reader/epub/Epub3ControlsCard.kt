@@ -423,7 +423,7 @@ fun Epub3LocationLabel(
         locatorToPositionIndex(positions, currentLocator)
     }
     Text(
-        text = "Loc. ${index + 1} of ${positions.size}",
+        text = LocalStrings.current.counts.locationOf(index + 1, positions.size),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
         textAlign = textAlign,

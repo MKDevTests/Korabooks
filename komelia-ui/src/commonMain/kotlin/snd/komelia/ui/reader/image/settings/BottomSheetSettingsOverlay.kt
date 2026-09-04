@@ -1018,7 +1018,7 @@ fun ImageReaderControlsCardNewUI(
                                 modifier = Modifier.size(20.dp).padding(end = 4.dp).offset(y = (-2).dp)
                             )
                             Text(
-                                text = "Page ${currentPageIndex + 1} of ${pages.size}",
+                                text = LocalStrings.current.counts.pageOf(currentPageIndex + 1, pages.size),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                                 textAlign = TextAlign.Center,

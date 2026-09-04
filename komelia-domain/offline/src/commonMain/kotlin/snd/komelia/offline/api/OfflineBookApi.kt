@@ -25,6 +25,7 @@ import snd.komelia.offline.book.model.OfflineThumbnailBook
 import snd.komelia.offline.book.repository.OfflineBookRepository
 import snd.komelia.offline.book.repository.OfflineThumbnailBookRepository
 import snd.komelia.offline.media.model.MediaExtensionEpub
+import snd.komelia.offline.media.model.OfflineMedia
 import snd.komelia.offline.media.repository.OfflineMediaRepository
 import snd.komelia.offline.mediacontainer.BookContentExtractors
 import snd.komelia.offline.readprogress.OfflineReadProgressRepository
@@ -180,7 +181,7 @@ class OfflineBookApi(
     }
 
     override suspend fun getBookPages(bookId: KomgaBookId): List<KomgaBookPage> {
-        val media = mediaRepository.get(bookId)
+        val media = withPageList(bookId)
         return when (media.status) {
             KomgaMediaStatus.UNKNOWN -> error("Book has not been analyzed yet")
             KomgaMediaStatus.OUTDATED -> error("Book is outdated and must be re-analyzed")
@@ -394,6 +395,33 @@ class OfflineBookApi(
             return
         }
         book.fileDownloadPath.readChunked(64 * 1024, onChunk)
+    }
+
+    /**
+     * The media row, with its page list filled in when only the file can answer.
+     *
+     * A mirrored PDF arrives with no pages at all — an OPDS entry does not carry
+     * a page count — and the download is what normally fills that in. A book
+     * downloaded before this existed would otherwise stay at zero pages for
+     * good, which is exactly the book that opens as nothing but its cover, so
+     * the reader asks once here too.
+     */
+    private suspend fun withPageList(bookId: KomgaBookId): OfflineMedia {
+        val media = mediaRepository.get(bookId)
+        if (media.mediaProfile != MediaProfile.PDF || media.pages.isNotEmpty()) return media
+
+        val book = keepLocally(bookId)
+        if (!book.hasLocalCopy) return media
+        val counted = try {
+            fileContentExtractors.readPageList(book, media)
+        } catch (e: Exception) {
+            currentCoroutineContext().ensureActive()
+            logger.warn(e) { "could not count the pages of ${book.name}" }
+            null
+        } ?: return media
+
+        mediaRepository.save(counted)
+        return counted
     }
 
     /**

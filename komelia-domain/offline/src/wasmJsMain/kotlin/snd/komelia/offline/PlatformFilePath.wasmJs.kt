@@ -5,6 +5,11 @@ import io.github.vinceglb.filekit.readBytes
 
 actual fun PlatformFile.localFilePath(): String? = null
 
+actual suspend fun PlatformFile.readHeader(size: Int): ByteArray {
+    val bytes = this.readBytes()
+    return if (bytes.size <= size) bytes else bytes.copyOf(size)
+}
+
 actual suspend fun PlatformFile.readChunked(chunkSize: Int, onChunk: suspend (ByteArray) -> Unit) {
     val bytes = this.readBytes()
     var offset = 0

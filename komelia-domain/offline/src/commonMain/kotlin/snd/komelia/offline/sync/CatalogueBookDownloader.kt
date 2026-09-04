@@ -9,9 +9,13 @@ import kotlinx.io.Sink
 import snd.komelia.offline.book.model.OfflineBook
 import snd.komelia.offline.book.repository.OfflineBookRepository
 import snd.komelia.offline.library.repository.OfflineLibraryRepository
+import snd.komelia.offline.media.model.OfflineMedia
+import snd.komelia.offline.mediacontainer.BookContentExtractors
 import snd.komelia.offline.media.repository.OfflineMediaRepository
+import snd.komelia.offline.readHeader
 import snd.komelia.offline.series.repository.OfflineSeriesRepository
 import snd.komga.client.book.KomgaBookId
+import snd.komga.client.book.MediaProfile
 import snd.komga.client.sse.KomgaEvent
 import kotlin.time.Clock
 
@@ -52,6 +56,8 @@ class CatalogueBookDownloader(
     private val mediaRepository: OfflineMediaRepository,
     private val downloader: CatalogueFileDownloader,
     private val komgaEvents: MutableSharedFlow<KomgaEvent>,
+    /** Absent on platforms with no extractors; the download then just skips the count. */
+    private val extractors: BookContentExtractors? = null,
 ) {
 
     /** True for books this downloader is the right one for. */
@@ -83,17 +89,76 @@ class CatalogueBookDownloader(
         }
         output.close()
 
+        val media = mediaRepository.find(book.id)
+        val problem = looksWrong(file, media?.mediaProfile)
+        if (problem != null) {
+            deleteFile(file)
+            throw IllegalStateException("${book.name}: $problem")
+        }
+
         // localFileLastModified is what tells the rest of the app a book is
         // downloaded — the mirror writes zero for it, so a book only becomes
         // readable here, after the bytes are on disk.
-        bookRepository.save(
-            book.copy(
-                fileDownloadPath = file,
-                localFileLastModified = Clock.System.now(),
-            )
+        val downloaded = book.copy(
+            fileDownloadPath = file,
+            localFileLastModified = Clock.System.now(),
         )
+        bookRepository.save(downloaded)
+        if (media != null) countPages(downloaded, media)
         logger.info { "downloaded ${book.name} from ${book.url}" }
         komgaEvents.emit(KomgaEvent.BookChanged(book.id, book.seriesId, book.libraryId))
+    }
+
+    /**
+     * Fills in what only the file itself can answer.
+     *
+     * The mirror stores a page count of zero for every book, because an OPDS
+     * entry does not carry one. A PDF reader asks for that list before it draws
+     * anything, so until somebody opens the file the book is a cover and
+     * nothing else. This is the first moment the file exists.
+     *
+     * Best effort on purpose: a PDF that cannot be counted is still a PDF worth
+     * keeping, and the reader falls back to asking again on open.
+     */
+    private suspend fun countPages(book: OfflineBook, media: OfflineMedia) {
+        val extractors = extractors ?: return
+        val counted = try {
+            extractors.readPageList(book, media)
+        } catch (e: Exception) {
+            logger.warn(e) { "could not count the pages of ${book.name}" }
+            null
+        } ?: return
+        mediaRepository.save(counted)
+        logger.info { "${book.name}: ${counted.pageCount} pages" }
+    }
+
+    /**
+     * Says why the downloaded bytes are not a book, or null when they look like one.
+     *
+     * Nothing on the way here reads the response: an expired Calibre-Web session
+     * answers 200 with its login page, a proxy answers 200 with an error page,
+     * and both were written to disk and marked downloaded. The reader then opened
+     * an HTML page as if it were an epub. Four bytes tell them apart.
+     */
+    private suspend fun looksWrong(file: PlatformFile, profile: MediaProfile?): String? {
+        val header = runCatching { file.readHeader(8) }.getOrNull() ?: return null
+        if (header.isEmpty()) return "the server sent an empty file"
+
+        val (magic, name) = when (profile) {
+            MediaProfile.PDF -> PDF_MAGIC to "PDF"
+            MediaProfile.EPUB, MediaProfile.DIVINA -> ZIP_MAGIC to "zip container"
+            // Nothing to check against, and refusing what we cannot describe
+            // would lose books over a profile the catalogue failed to state.
+            null -> return null
+        }
+        if (header.size >= magic.size && magic.indices.all { header[it] == magic[it] }) return null
+
+        // Almost always a page meant for a browser rather than a reader.
+        val start = header.decodeToString().trimStart().lowercase()
+        if (start.startsWith("<!do") || start.startsWith("<htm")) {
+            return "the server sent a web page instead of the file — the session may have expired"
+        }
+        return "the downloaded file is not a $name"
     }
 
     /**
@@ -120,5 +185,13 @@ class CatalogueBookDownloader(
             .take(120)
             .ifBlank { book.id.value }
         return if (safe.endsWith(".$extension", ignoreCase = true)) safe else "$safe.$extension"
+    }
+
+    private companion object {
+        /** "%PDF" */
+        val PDF_MAGIC = byteArrayOf(0x25, 0x50, 0x44, 0x46)
+
+        /** "PK" — epub, cbz and every other zip container. */
+        val ZIP_MAGIC = byteArrayOf(0x50, 0x4B, 0x03, 0x04)
     }
 }

@@ -357,9 +357,12 @@ class ReaderState(
      * CBZ can never be served stale pages.
      */
     private suspend fun loadBookPages(book: KomeliaBook): List<PageMetadata> {
-        BookPagesCache.get(book.id, book.fileHash)?.let { return it }
+        // An empty list is never worth remembering: it is what a mirrored PDF
+        // returns until somebody counts its pages, and caching it would keep the
+        // book at zero pages long after the count landed.
+        BookPagesCache.get(book.id, book.fileHash)?.takeIf { it.isNotEmpty() }?.let { return it }
         return loadBookPagesFromServer(book.id).also {
-            BookPagesCache.put(book.id, book.fileHash, it)
+            if (it.isNotEmpty()) BookPagesCache.put(book.id, book.fileHash, it)
         }
     }
 

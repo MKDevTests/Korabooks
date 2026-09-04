@@ -250,6 +250,7 @@ abstract class OfflineModule(
                 mediaRepository = repositories.mediaRepository,
                 downloader = it,
                 komgaEvents = komgaEvents,
+                extractors = fileService,
             )
         }
 

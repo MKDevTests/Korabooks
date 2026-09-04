@@ -542,6 +542,16 @@ class OpdsMirrorWriter(private val repositories: OfflineRepositories) {
                 fileDownloadPath = existing?.fileDownloadPath ?: PlatformFile(""),
             )
         )
+        // Page count and page list are the file's answer, not the catalogue's:
+        // the sync has never opened the file and has nothing but zero to write.
+        // Overwriting what the download worked out would send a downloaded PDF
+        // back to being a cover on the next sync, so a row that already knows
+        // keeps what it knows. Only looked up for books that have a local file,
+        // which is a handful out of twenty thousand.
+        val counted = if (existing != null && existing.localFileLastModified.epochSeconds > 0)
+            repositories.mediaRepository.find(book.id)?.takeIf { it.pageCount > 0 }
+        else null
+
         // Metadata is not written here: write() saves the whole batch of it in
         // one go, and regroup() only ever touches books it already wrote.
         repositories.mediaRepository.save(
@@ -553,9 +563,9 @@ class OpdsMirrorWriter(private val repositories: OfflineRepositories) {
                 comment = book.media.comment,
                 epubDivinaCompatible = book.media.epubDivinaCompatible,
                 epubIsKepub = book.media.epubIsKepub,
-                pageCount = book.media.pagesCount,
+                pageCount = counted?.pageCount ?: book.media.pagesCount,
                 // A page list needs the file open. It arrives with the download.
-                pages = emptyList(),
+                pages = counted?.pages ?: emptyList(),
                 extension = null,
             )
         )

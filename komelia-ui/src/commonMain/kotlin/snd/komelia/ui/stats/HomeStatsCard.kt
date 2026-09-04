@@ -32,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import snd.komelia.ui.LocalStrings
+import snd.komelia.ui.strings.CountStrings
 
 /**
  * Compact reading stats summary, embedded near the top of the Home screen.
@@ -100,6 +101,7 @@ fun HomeStatsCard() {
                 )
                 Text(
                     text = buildSummaryLine(
+                        counts = LocalStrings.current.counts,
                         booksThisMonth = current.booksFinishedLast30Days,
                         streak = current.streakDays,
                     ),
@@ -116,16 +118,8 @@ fun HomeStatsCard() {
     }
 }
 
-private fun buildSummaryLine(booksThisMonth: Int, streak: Int): String {
-    val books = when (booksThisMonth) {
-        0 -> "No book finished this month"
-        1 -> "1 book this month"
-        else -> "$booksThisMonth books this month"
-    }
-    val streakSuffix = when {
-        streak <= 0 -> ""
-        streak == 1 -> " · 1-day streak"
-        else -> " · $streak-day streak"
-    }
+private fun buildSummaryLine(counts: CountStrings, booksThisMonth: Int, streak: Int): String {
+    val books = counts.booksThisMonth(booksThisMonth)
+    val streakSuffix = if (streak <= 0) "" else " · " + counts.readingStreak(streak)
     return books + streakSuffix
 }

@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.sp
 import kotlinx.datetime.LocalDate
 import snd.komelia.ui.LocalStrings
 import snd.komelia.ui.common.components.ExpandableText
+import snd.komelia.ui.common.displayYear
 import snd.komelia.ui.library.NextReleaseLabels
 import snd.komelia.ui.library.SeriesScreenFilter
 import snd.komga.client.common.KomgaReadingDirection
@@ -108,8 +109,9 @@ fun SeriesDescriptionRow(
             )
         }
 
-        if (showReleaseYear && releaseDate != null)
-            Text(LocalStrings.current.counts.releaseYear(releaseDate.year), style = MaterialTheme.typography.labelSmall)
+        val releaseYear = releaseDate?.displayYear()
+        if (showReleaseYear && releaseYear != null)
+            Text(LocalStrings.current.counts.releaseYear(releaseYear), style = MaterialTheme.typography.labelSmall)
 
         FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             SuggestionChip(

@@ -150,6 +150,11 @@ data class CountStrings(
     val inLibrary: (String) -> String,
     val releaseYear: (Int) -> String,
     val processedFiles: (Int) -> String,
+    val publicationDate: (String) -> String,
+    val lastAccessed: (String) -> String,
+    val booksThisMonth: (Int) -> String,
+    val readingStreak: (Int) -> String,
+    val maxImageCacheSize: (String) -> String,
 )
 
 /**

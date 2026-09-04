@@ -66,6 +66,7 @@ import snd.komelia.ui.LocalHideParenthesesInNames
 import snd.komelia.ui.LocalKomgaEvents
 import snd.komelia.ui.LocalToggleImmersiveMorphingCover
 import snd.komelia.ui.LocalUseImmersiveMorphingCover
+import snd.komelia.ui.common.displayYear
 import snd.komga.client.sse.KomgaEvent.ThumbnailBookEvent
 import snd.komga.client.sse.KomgaEvent.ThumbnailSeriesEvent
 import snd.komelia.ui.collection.SeriesCollectionsContent
@@ -248,7 +249,7 @@ fun ImmersiveSeriesContent(
             .distinctBy { it.name }
             .joinToString(", ") { it.name }
     }
-    val year = series.booksMetadata.releaseDate?.year
+    val year = series.booksMetadata.releaseDate?.displayYear()
     val authorYearText = buildString {
         if (writers.isNotEmpty()) append(writers)
         if (year != null) {

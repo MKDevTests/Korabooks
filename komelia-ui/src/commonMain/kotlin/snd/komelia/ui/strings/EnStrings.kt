@@ -1120,6 +1120,17 @@ val EnStrings = AppStrings(
         inLibrary = { "in $it" },
         releaseYear = { "Release Year: $it" },
         processedFiles = { "Processed $it files" },
+        publicationDate = { "Publication date: $it" },
+        lastAccessed = { "Last read: $it" },
+        booksThisMonth = {
+            when (it) {
+                0 -> "No book finished this month"
+                1 -> "1 book this month"
+                else -> "$it books this month"
+            }
+        },
+        readingStreak = { if (it == 1) "1-day streak" else "$it-day streak" },
+        maxImageCacheSize = { "Max image cache size: $it GB" },
     ),
     navigation = NavigationStrings(
         libraries = "Libraries",

@@ -3,7 +3,11 @@
 package com.storyteller.reader
 
 import android.annotation.SuppressLint
+import android.content.ActivityNotFoundException
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.util.Log
 import android.webkit.JavascriptInterface
 import android.widget.FrameLayout
 import androidx.annotation.ColorInt
@@ -716,8 +720,22 @@ class EpubView(
         }
     }
 
+    /**
+     * A link that leaves the book. Readium hands it over; nobody had taken it.
+     *
+     * The callback was left as a TODO(), so touching a footnote source or an
+     * author's website in an epub threw NotImplementedError and took the reader
+     * down with it. Handing it to the browser is what a reader expects; a device
+     * with nothing able to open the address is a shrug, not a crash.
+     */
     @ExperimentalReadiumApi
     override fun onExternalLinkActivated(url: AbsoluteUrl) {
-        TODO("Not yet implemented")
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url.toString()))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        try {
+            context.startActivity(intent)
+        } catch (e: ActivityNotFoundException) {
+            Log.w("EpubView", "nothing on this device can open $url", e)
+        }
     }
 }

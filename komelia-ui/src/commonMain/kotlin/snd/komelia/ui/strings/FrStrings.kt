@@ -1132,6 +1132,17 @@ val FrStrings = AppStrings(
         inLibrary = { "dans $it" },
         releaseYear = { "Année de parution : $it" },
         processedFiles = { "$it fichier" + (if (it > 1) "s" else "") + " traité" + if (it > 1) "s" else "" },
+        publicationDate = { "Publié le $it" },
+        lastAccessed = { "lu le $it" },
+        booksThisMonth = {
+            when (it) {
+                0 -> "Aucun livre terminé ce mois-ci"
+                1 -> "1 livre ce mois-ci"
+                else -> "$it livres ce mois-ci"
+            }
+        },
+        readingStreak = { "$it jour" + (if (it > 1) "s" else "") + " d'affilée" },
+        maxImageCacheSize = { "Taille max du cache d'images : $it Go" },
     ),
     navigation = NavigationStrings(
         libraries = "Bibliothèques",

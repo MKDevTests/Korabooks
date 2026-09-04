@@ -136,7 +136,9 @@ fun ImageReaderSettingsContent(
 
         Column {
             Text(
-                "Max Image Cache Size: ${"%.1f".format(imageCacheSizeLimitMb.toDouble() / 1024)} GB",
+                LocalStrings.current.counts.maxImageCacheSize(
+                    "%.1f".format(imageCacheSizeLimitMb.toDouble() / 1024)
+                ),
                 style = MaterialTheme.typography.labelLarge
             )
             Slider(

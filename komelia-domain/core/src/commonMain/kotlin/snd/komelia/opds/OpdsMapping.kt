@@ -1,6 +1,8 @@
 package snd.komelia.opds
 
 import kotlinx.datetime.LocalDate
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.todayIn
 import snd.komelia.komga.api.model.KomeliaBook
 import snd.komga.client.book.KomgaBookId
 import snd.komga.client.book.KomgaBookMetadata
@@ -273,8 +275,27 @@ class OpdsMapper(
         )
     }
 
+    /**
+     * A publication date, or null when the catalogue is only pretending to have one.
+     *
+     * Calibre stores `0101-01-01` for "publication date unknown" — a sentinel,
+     * not a year — and it reached the shelf as "(101)" on 1 898 of this
+     * library's books. A date whose year falls outside anything a book could
+     * plausibly carry is dropped, which also catches the typo at the other end:
+     * one book is dated 9442 in Calibre itself.
+     */
     private fun parseDate(raw: String): LocalDate? =
-        runCatching { LocalDate.parse(raw.substringBefore('T')) }.getOrNull()
+        runCatching { LocalDate.parse(raw.substringBefore('T')) }
+            .getOrNull()
+            ?.takeIf { it.year in plausibleYears }
+
+    /**
+     * Movable type to five years out. Wide on purpose: this is here to catch
+     * sentinels and typos, not to referee what counts as an old book.
+     */
+    private val plausibleYears: IntRange by lazy {
+        1450..(Clock.System.todayIn(TimeZone.currentSystemDefault()).year + 5)
+    }
 
     private fun parseInstant(raw: String): Instant? =
         runCatching { Instant.parse(raw) }.getOrNull()

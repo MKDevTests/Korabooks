@@ -90,6 +90,7 @@ import snd.komelia.ui.LocalUseImmersiveMorphingCover
 import snd.komelia.ui.collection.SeriesCollectionsContent
 import snd.komelia.ui.common.components.AppFilterChipDefaults
 import coil3.compose.rememberAsyncImagePainter
+import snd.komelia.ui.common.displayYear
 import snd.komelia.ui.common.images.ThumbnailImage
 import snd.komelia.ui.common.immersive.ImmersiveDetailFab
 import snd.komelia.ui.common.immersive.ImmersiveDetailScaffold
@@ -175,7 +176,7 @@ fun ImmersiveOneshotContent(
             ?.filter { it.role.lowercase() == "writer" }
             ?.joinToString(", ") { it.name } ?: ""
     }
-    val year = book?.metadata?.releaseDate?.year
+    val year = book?.metadata?.releaseDate?.displayYear()
     val authorYearText = buildString {
         if (writers.isNotEmpty()) append(writers)
         if (year != null) {
@@ -642,20 +643,25 @@ private fun OneshotImmersiveTabRow(
 
 @Composable
 private fun BookStatsLine(book: KomeliaBook, modifier: Modifier = Modifier) {
-    val segments = remember(book) {
+    val counts = LocalStrings.current.counts
+    val segments = remember(book, counts) {
         buildList {
-            book.metadata.releaseDate?.let { add("Publication date: $it") }
+            // displayYear's range, applied to the whole date: Calibre's
+            // "unknown" sentinel is a date like any other until you look at it.
+            book.metadata.releaseDate
+                ?.takeIf { it.displayYear() != null }
+                ?.let { add(counts.publicationDate(it.toString())) }
             book.readProgress?.let { progress ->
                 val accessed = progress.readDate
                     .toLocalDateTime(TimeZone.currentSystemDefault())
                     .format(localDateTimeFormat)
-                add("last accessed: $accessed")
+                add(counts.lastAccessed(accessed))
             }
         }
     }
     if (segments.isEmpty()) return
     Text(
-        text = segments.joinToString(" ! "),
+        text = segments.joinToString(" · "),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = modifier,

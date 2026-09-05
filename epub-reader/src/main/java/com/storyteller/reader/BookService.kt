@@ -31,6 +31,7 @@ import org.readium.r2.shared.util.mediatype.MediaType
 import org.readium.r2.shared.util.resource.Resource
 import org.readium.r2.shared.util.toUri
 import org.readium.r2.shared.util.xml.ElementNode
+import org.readium.r2.shared.util.resource.TransformingContainer
 import org.readium.r2.streamer.PublicationOpener
 import org.readium.r2.streamer.parser.epub.EpubParser
 import java.io.File
@@ -220,6 +221,12 @@ object BookService {
         val publication =
             opener.open(asset, allowUserInteraction = false, onCreatePublication = { ->
                 val builder = this
+
+                // Chapters go to the WebView as XML, which refuses a file over a
+                // duplicated attribute and shows a parser error instead of the
+                // book. Well-formed files pass through untouched.
+                builder.container = TransformingContainer(builder.container, XhtmlRepair::wrap)
+
                 runBlocking {
                     val containerUrl = RelativeUrl("META-INF/container.xml") ?: return@runBlocking
                     val containerXml =

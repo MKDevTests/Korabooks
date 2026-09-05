@@ -1,5 +1,6 @@
 package com.storyteller.reader
 
+import java.nio.charset.CharacterCodingException
 import org.readium.r2.shared.util.Try
 import org.readium.r2.shared.util.Url
 import org.readium.r2.shared.util.data.ReadError
@@ -20,11 +21,23 @@ import org.readium.r2.shared.util.resource.TransformingResource
  * would every other reader the file has been through — which is why a file like
  * this can sit in a library for years without anyone noticing it is broken.
  *
- * The repair is deliberately narrow: it removes repeated attributes from an
- * opening tag and changes nothing else, so a file that was already well-formed
- * comes back byte for byte. It does not attempt to fix unescaped ampersands,
- * unclosed tags, or the other ways XML can be refused — those would need a real
- * HTML parser, and this one is a scalpel for the defect actually seen.
+ * Most of the time the duplicate is not in the file at all: it is created while
+ * the chapter is served. Readium's `ReadiumCss.injectCssProperties` writes the
+ * reader's settings as a `style` attribute on the root `<html>` element, and —
+ * unlike the `dir` injection right next to it, which strips the existing value
+ * first — it does not look for a `style` that is already there. A file Calibre
+ * exported with `<html style="font-size:1.136rem;">` therefore reaches the
+ * parser with two. Since that injection happens after this transform, the
+ * `style` attribute is removed from `<html>` outright rather than deduplicated:
+ * Readium is about to write its own, and the reader's own font size should win
+ * over whatever the exporter froze into the file.
+ *
+ * The repair is otherwise deliberately narrow: it removes repeated attributes
+ * from an opening tag and changes nothing else, so a file that was already
+ * well-formed and has no `style` on `<html>` comes back byte for byte. It does
+ * not attempt to fix unescaped ampersands, unclosed tags, or the other ways XML
+ * can be refused — those would need a real HTML parser, and this one is a
+ * scalpel for the defects actually seen.
  */
 internal object XhtmlRepair {
 
@@ -36,6 +49,9 @@ internal object XhtmlRepair {
     /** `name=` at an attribute position, i.e. preceded by whitespace. */
     private val attribute = Regex("""\s([a-zA-Z_:][-a-zA-Z0-9_:.]*)\s*=\s*("[^"]*"|'[^']*')""")
 
+    /** The one attribute Readium re-injects on `<html>` without a guard. */
+    private const val INJECTED_ON_ROOT = "style"
+
     /** True for the resources the WebView will parse as XML. */
     fun handles(url: Url): Boolean = url.extension?.value?.lowercase() in markupExtensions
 
@@ -46,12 +62,23 @@ internal object XhtmlRepair {
      * case costs one scan and no allocation.
      */
     fun repair(bytes: ByteArray): ByteArray {
-        val text = bytes.decodeToString()
+        // Rewriting means a decode and a re-encode, so anything that is not
+        // UTF-8 — a UTF-16 chapter, a legacy encoding — is handed back
+        // untouched. An unreadable chapter is a smaller loss than a corrupted
+        // one, and EPUB 3 asks for UTF-8 anyway.
+        val text = try {
+            bytes.decodeToString(throwOnInvalidSequence = true)
+        } catch (e: CharacterCodingException) {
+            return bytes
+        }
         var repaired: StringBuilder? = null
         var copiedUpTo = 0
 
         for (tag in openingTag.findAll(text)) {
             val seen = HashSet<String>()
+            // Claiming the name up front makes the existing drop-a-repeat path
+            // remove the file's own `style` on `<html>`, first one included.
+            if (nameOf(tag.value) == "html") seen.add(INJECTED_ON_ROOT)
             var kept: StringBuilder? = null
             var tagCopiedUpTo = 0
 
@@ -78,6 +105,10 @@ internal object XhtmlRepair {
         out.append(text, copiedUpTo, text.length)
         return out.toString().encodeToByteArray()
     }
+
+    /** `html` for `<html xmlns="…">`, lowercased. */
+    private fun nameOf(tag: String): String =
+        tag.drop(1).takeWhile { it.isLetterOrDigit() }.lowercase()
 
     /** Wraps [resource] so the repair happens on the way to the WebView. */
     fun wrap(url: Url, resource: Resource): Resource =

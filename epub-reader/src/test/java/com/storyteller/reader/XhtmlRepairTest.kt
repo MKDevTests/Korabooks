@@ -70,4 +70,49 @@ class XhtmlRepairTest {
         val ok = "<!-- style=\"a\" style=\"b\" --><p>x</p>"
         assertEquals(ok, repair(ok))
     }
+
+    @Test
+    fun `the style Calibre froze onto html is removed, because Readium adds its own`() {
+        assertEquals(
+            """<html xmlns="http://www.w3.org/1999/xhtml"><body/></html>""",
+            repair("""<html xmlns="http://www.w3.org/1999/xhtml" style="font-size:1.136rem;"><body/></html>"""),
+        )
+    }
+
+    @Test
+    fun `an html tag with no style of its own comes back as the same array`() {
+        val bytes = """<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="fr"><body/></html>"""
+            .encodeToByteArray()
+        assertSame(bytes, XhtmlRepair.repair(bytes))
+    }
+
+    @Test
+    fun `html keeps every attribute but style`() {
+        assertEquals(
+            """<html lang="fr" dir="ltr">x</html>""",
+            repair("""<html lang="fr" style="font-size:2rem" dir="ltr">x</html>"""),
+        )
+    }
+
+    @Test
+    fun `two styles on html both go, so the injected one stands alone`() {
+        assertEquals(
+            """<html>x</html>""",
+            repair("""<html style="a" style="b">x</html>"""),
+        )
+    }
+
+    @Test
+    fun `a style on body is left where it is`() {
+        assertEquals(
+            """<html><body style="margin:0">x</body></html>""",
+            repair("""<html style="font-size:1rem"><body style="margin:0">x</body></html>"""),
+        )
+    }
+
+    @Test
+    fun `a chapter that is not UTF-8 is handed back rather than re-encoded`() {
+        val latin1 = """<html style="a">Le trésor</html>""".toByteArray(Charsets.ISO_8859_1)
+        assertSame(latin1, XhtmlRepair.repair(latin1))
+    }
 }

@@ -4,8 +4,10 @@ import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import cafe.adriel.voyager.navigator.Navigator
 import coil3.PlatformContext
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.stateIn
 import snd.komelia.AppNotifications
 import snd.komelia.AppWindowState
 import snd.komelia.ManagedKomgaEvents
@@ -53,13 +55,22 @@ class EpubReaderViewModel(
 
     val readerType = MutableStateFlow<EpubReaderType?>(null)
 
+    /**
+     * Whether to hold the screen awake, followed rather than sampled.
+     *
+     * It used to be read once when the reader opened, so flipping the switch
+     * while a book was open did nothing until the next open — the image reader
+     * has always followed it live, and the two now behave the same. The screen
+     * itself is set by [EpubScreen], whose DisposableEffect also releases the
+     * flag when the reader leaves the composition.
+     */
+    val keepScreenOn: StateFlow<Boolean> = settingsRepository.getKeepReaderScreenOn()
+        .stateIn(screenModelScope, SharingStarted.Eagerly, false)
+
     private val _pendingReaderState = MutableStateFlow<EpubReaderState?>(null)
     val pendingReaderState = _pendingReaderState.asStateFlow()
 
     suspend fun initialize(navigator: Navigator) {
-        if (settingsRepository.getKeepReaderScreenOn().first()) {
-            windowState.setKeepScreenOn(true)
-        }
         when (val state = state.value) {
             LoadState.Loading, is LoadState.Error -> {}
             is LoadState.Success<EpubReaderState> -> state.value.initialize(navigator)
@@ -157,6 +168,7 @@ class EpubReaderViewModel(
     override fun onDispose() {
         windowState.setKeepScreenOn(false)
     }
+
 }
 
 interface EpubReaderState {

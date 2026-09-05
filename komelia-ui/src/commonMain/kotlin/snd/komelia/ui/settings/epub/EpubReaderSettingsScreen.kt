@@ -31,6 +31,8 @@ class EpubReaderSettingsScreen : Screen {
                     epubCacheSizeLimitMb = vm.epubCacheSizeLimitMb.collectAsState().value,
                     onEpubCacheSizeLimitMbChange = vm::onEpubCacheSizeLimitMbChange,
                     onClearEpubCache = vm::onClearEpubCache,
+                    keepReaderScreenOn = vm.keepReaderScreenOn.collectAsState().value,
+                    onKeepReaderScreenOnChange = vm::onKeepReaderScreenOnChange,
                 )
             }
 

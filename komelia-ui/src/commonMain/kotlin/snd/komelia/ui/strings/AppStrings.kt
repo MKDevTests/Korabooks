@@ -155,6 +155,7 @@ data class CountStrings(
     val booksThisMonth: (Int) -> String,
     val readingStreak: (Int) -> String,
     val maxImageCacheSize: (String) -> String,
+    val maxEpubCacheSize: (String) -> String,
     val pageOf: (Int, Int) -> String,
     val locationOf: (Int, Int) -> String,
     val searchResults: (Int) -> String,

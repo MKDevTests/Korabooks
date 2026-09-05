@@ -1134,6 +1134,7 @@ val EnStrings = AppStrings(
         },
         readingStreak = { if (it == 1) "1-day streak" else "$it-day streak" },
         maxImageCacheSize = { "Max image cache size: $it GB" },
+        maxEpubCacheSize = { "Max EPUB cache size: $it GB" },
         pageOf = { page, total -> "Page $page of $total" },
         locationOf = { location, total -> "Loc. $location of $total" },
         searchResults = { if (it == 1) "1 result" else "$it results" },

@@ -689,6 +689,7 @@ class ViewModelFactory(
     fun getEpubReaderSettingsViewModel(): EpubReaderSettingsViewModel {
         return EpubReaderSettingsViewModel(
             settingsRepository = appRepositories.epubReaderSettingsRepository,
+            commonSettingsRepository = appRepositories.settingsRepository,
             onEpubCacheClear = dependencies.onEpubCacheClear,
         )
     }

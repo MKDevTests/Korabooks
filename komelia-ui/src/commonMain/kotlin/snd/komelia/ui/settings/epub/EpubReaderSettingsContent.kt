@@ -17,9 +17,12 @@ import snd.komelia.settings.model.EpubReaderType.EPUB3_READER
 import snd.komelia.settings.model.EpubReaderType.KOMGA_EPUB
 import snd.komelia.settings.model.EpubReaderType.TTSU_EPUB
 import snd.komelia.ui.LocalAccentColor
+import snd.komelia.ui.LocalPlatform
 import snd.komelia.ui.LocalStrings
 import snd.komelia.ui.common.components.DropdownChoiceMenu
 import snd.komelia.ui.common.components.LabeledEntry
+import snd.komelia.ui.common.components.SwitchWithLabel
+import snd.komelia.ui.platform.PlatformType
 import snd.komelia.ui.platform.cursorForHand
 
 @Composable
@@ -30,12 +33,27 @@ fun EpubReaderSettingsContent(
     epubCacheSizeLimitMb: Long,
     onEpubCacheSizeLimitMbChange: (Long) -> Unit,
     onClearEpubCache: () -> Unit,
+
+    keepReaderScreenOn: Boolean,
+    onKeepReaderScreenOnChange: (Boolean) -> Unit,
 ) {
     val strings = LocalStrings.current.settings
     val accentColor = LocalAccentColor.current
+    val platform = LocalPlatform.current
     Column(
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
+        // The same switch as the image reader's, showing the same value: one
+        // setting, two places to find it. A phone is the only platform where
+        // the screen turns itself off, so it is the only one that shows it.
+        if (platform == PlatformType.MOBILE) {
+            SwitchWithLabel(
+                checked = keepReaderScreenOn,
+                onCheckedChange = onKeepReaderScreenOnChange,
+                label = { Text(LocalStrings.current.ui.keepScreenOnWhileReading) },
+            )
+        }
+
         Row(verticalAlignment = Alignment.CenterVertically) {
             DropdownChoiceMenu(
                 selectedOption = remember(readerType) {
@@ -91,7 +109,9 @@ fun EpubReaderSettingsContent(
 
                     Column {
                         Text(
-                            "Max EPUB Cache Size: ${"%.1f".format(epubCacheSizeLimitMb.toDouble() / 1024)} GB",
+                            LocalStrings.current.counts.maxEpubCacheSize(
+                                "%.1f".format(epubCacheSizeLimitMb.toDouble() / 1024)
+                            ),
                             style = MaterialTheme.typography.labelLarge
                         )
                         Slider(

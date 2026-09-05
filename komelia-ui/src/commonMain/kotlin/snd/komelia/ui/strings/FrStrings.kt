@@ -1146,6 +1146,7 @@ val FrStrings = AppStrings(
         },
         readingStreak = { "$it jour" + (if (it > 1) "s" else "") + " d'affilée" },
         maxImageCacheSize = { "Taille max du cache d'images : $it Go" },
+        maxEpubCacheSize = { "Taille max du cache EPUB : $it Go" },
         pageOf = { page, total -> "Page $page sur $total" },
         locationOf = { location, total -> "Emplac. $location sur $total" },
         searchResults = { "$it résultat" + if (it > 1) "s" else "" },

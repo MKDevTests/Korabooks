@@ -2,6 +2,7 @@ package snd.komelia.ui.reader
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
@@ -71,6 +72,16 @@ class EpubScreen(
                     )
                 }
             }
+        }
+
+        // Mirrors the image reader: the flag follows the setting live, and the
+        // effect leaving the composition puts the screen back under the
+        // system's control even if the screen model outlives it.
+        val windowState = LocalWindowState.current
+        val keepScreenOn = vm.keepScreenOn.collectAsState().value
+        DisposableEffect(keepScreenOn) {
+            windowState.setKeepScreenOn(keepScreenOn)
+            onDispose { windowState.setKeepScreenOn(false) }
         }
 
         val state = vm.state.collectAsState().value
